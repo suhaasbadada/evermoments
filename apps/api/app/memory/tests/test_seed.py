@@ -83,6 +83,7 @@ def test_demo_runs_on_local(monkeypatch):
     assert summary["wallet_status_after"] == "confirmed"
     assert summary["ravi_found"] is True
     assert summary["recent_intakes"] == 2
+    assert summary["double_dose"] is True
     assert summary["patterns"] == 1
     assert summary["forgot"] is True
     assert summary["nodes"] > summary["ingested"]

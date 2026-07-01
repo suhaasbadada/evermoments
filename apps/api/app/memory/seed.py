@@ -14,6 +14,7 @@ arrive in later slices). At the double-dose step it shows the two clustered
 unverified intakes — the condition the Slice-4 `possible_double_dose` warning fires on.
 """
 
+from app.memory.contradiction import check_double_dose
 from app.memory.store import MemoryStore, reset_store, store
 from app.schemas.memory import MemoryEvent
 
@@ -195,17 +196,21 @@ def demo() -> dict:
     ravi_found = bool(ravi) and ravi[0].node_type == "PersonMention"
 
     _section("Ingest a 2nd blue pill ~40 min later (deliberate double-dose)")
-    s.add_event(second_blue_pill())
+    new_pill = second_blue_pill()
+    s.add_event(new_pill)
     print(f"   ingested {BLUE_PILL_2_ID}")
 
     _section("Recent blue-pill intakes within 180 min")
     recent = s.recent_intake_events(PATIENT_ID, "blue pill", 180)
     _show(recent)
-    unverified = [r for r in recent if r.verification_status != "confirmed"]
-    print(
-        f"   ⚠ {len(recent)} intakes clustered; {len(unverified)} unverified -> "
-        "the Slice-4 possible_double_dose warning fires on this condition."
-    )
+
+    _section("Double-dose safety check")
+    warning = check_double_dose(s, new_pill)
+    if warning:
+        print(f"   ⚠ {warning.type}: {warning.message}")
+        print(f"     related notes: {warning.related_note_ids}")
+    else:
+        print("   no double-dose warning")
 
     _section("Consolidate: surface repeated patterns")
     consolidated = s.consolidate(PATIENT_ID)
@@ -230,6 +235,7 @@ def demo() -> dict:
         "wallet_status_after": wallet_status_after,
         "ravi_found": ravi_found,
         "recent_intakes": len(recent),
+        "double_dose": bool(warning),
         "patterns": len(patterns),
         "forgot": forgot,
         "nodes": len(g["nodes"]),
