@@ -1,0 +1,128 @@
+"""Tests for the memory engine (Slice 5), using an injected LocalStore."""
+
+import pytest
+
+from app.memory import engine
+from app.memory.engine import EMPTY_RECALL_MESSAGE
+from app.memory.seed import BLUE_PILL_1_ID, PATIENT_ID, load_baseline
+from app.memory.stores.local_store import LocalStore
+from app.schemas.memory import MemoryAnswer, MemoryEvent
+
+
+@pytest.fixture()
+def store() -> LocalStore:
+    return LocalStore()
+
+
+def _wallet_event() -> MemoryEvent:
+    return MemoryEvent(
+        patient_id=PATIENT_ID,
+        recorded_at="2026-07-01T08:15:00Z",
+        event_type="object_location",
+        transcript="I kept my wallet near the TV.",
+        entities={"objects": [{"name": "wallet", "location": "near the TV"}]},
+    )
+
+
+def _intake(event_id: str, recorded_at: str) -> MemoryEvent:
+    return MemoryEvent(
+        patient_id=PATIENT_ID,
+        event_id=event_id,
+        recorded_at=recorded_at,
+        event_type="medication_intake",
+        entities={"medications": [{"name": "blue pill"}]},
+    )
+
+
+# -- ingest -------------------------------------------------------------------
+
+
+def test_ingest_generates_id_and_is_queryable(store: LocalStore):
+    result = engine.ingest_memory_event(_wallet_event(), store=store)
+    assert result["event_id"].startswith("evt_")
+    assert result["status"] == "stored"
+    assert result["warning"] is None
+
+    answer = engine.query_memory(PATIENT_ID, "where is my wallet", store=store)
+    assert answer.results
+    assert answer.results[0].note_id == result["event_id"]
+
+
+def test_ingest_double_dose_returns_warning(store: LocalStore):
+    engine.ingest_memory_event(_intake("evt_a", "2026-07-01T08:30:00Z"), store=store)
+    result = engine.ingest_memory_event(_intake("evt_b", "2026-07-01T09:10:00Z"), store=store)
+    warning = result["warning"]
+    assert warning is not None
+    assert warning.type == "possible_double_dose"
+    assert {"evt_a", "evt_b"} <= set(warning.related_note_ids)
+
+
+# -- query --------------------------------------------------------------------
+
+
+def test_query_returns_full_provenance(store: LocalStore):
+    load_baseline(store)
+    answer = engine.query_memory(PATIENT_ID, "where is my wallet", store=store)
+    assert isinstance(answer, MemoryAnswer)
+    assert answer.query == "where is my wallet"
+    assert answer.warnings == []
+    assert answer.results
+
+    top = answer.results[0]
+    assert top.fact
+    assert top.node_type == "ObjectLocation"
+    assert top.recorded_at
+    assert top.source == "voice_note"
+    assert top.verification_status == "unverified"
+    assert top.note_id
+    # calm answer reflects the (unverified) caregiver status
+    assert "caregiver" in answer.answer.lower()
+    assert "wallet" in answer.answer.lower()
+
+
+def test_query_empty_recall_is_deterministic(store: LocalStore):
+    load_baseline(store)
+    answer = engine.query_memory(PATIENT_ID, "xyzzy quux", store=store)
+    assert answer.results == []
+    assert answer.answer == EMPTY_RECALL_MESSAGE
+
+
+def test_query_reflects_confirmed_status(store: LocalStore):
+    load_baseline(store)
+    wallet_id = engine.query_memory(PATIENT_ID, "where is my wallet", store=store).results[0].note_id
+    assert engine.verify_memory(PATIENT_ID, wallet_id, "confirmed", "nurse_amy", store=store) is True
+
+    answer = engine.query_memory(PATIENT_ID, "where is my wallet", store=store)
+    assert answer.results[0].verification_status == "confirmed"
+    assert "confirmed" in answer.answer.lower()
+    assert "nurse_amy" in answer.answer
+
+
+# -- verify / consolidate / forget / graph ------------------------------------
+
+
+def test_verify_memory_missing_returns_false(store: LocalStore):
+    load_baseline(store)
+    assert engine.verify_memory(PATIENT_ID, "nope", "confirmed", "x", store=store) is False
+
+
+def test_consolidate_surfaces_pattern(store: LocalStore):
+    load_baseline(store)
+    out = engine.consolidate(PATIENT_ID, store=store)
+    assert "run_id" in out
+    assert len(out["patterns"]) == 1
+    assert out["patterns"][0]["count"] == 3
+
+
+def test_forget_memory(store: LocalStore):
+    load_baseline(store)
+    assert engine.forget_memory(PATIENT_ID, BLUE_PILL_1_ID, store=store) is True
+    rows = engine.query_memory(PATIENT_ID, "blue pill", store=store).results
+    assert all(r.note_id != BLUE_PILL_1_ID for r in rows)
+
+
+def test_graph_delegates(store: LocalStore):
+    load_baseline(store)
+    g = engine.graph(PATIENT_ID, store=store)
+    assert g["nodes"]
+    assert any(n["type"] == "Patient" for n in g["nodes"])
