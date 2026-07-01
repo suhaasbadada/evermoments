@@ -11,6 +11,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 
+from app.core.config import settings
 from app.schemas.memory import MemoryEvent, MemoryResult, VerificationStatus
 
 logger = logging.getLogger(__name__)
@@ -71,8 +72,12 @@ def get_store() -> MemoryStore:
 
     Lazy imports keep ``cognee`` out of the ``local`` path and avoid an import cycle.
     An unknown value falls back to ``local`` (resilience-first) with a warning.
+
+    ``settings.MEMORY_BACKEND`` (fed by ``apps/api/.env``) is the source of the
+    default; a live ``MEMORY_BACKEND`` env var still overrides it, so tests and the
+    ``MEMORY_BACKEND=graph python -m app.memory.seed`` CLI keep working.
     """
-    backend = os.getenv("MEMORY_BACKEND", "local").strip().lower()
+    backend = os.getenv("MEMORY_BACKEND", settings.MEMORY_BACKEND).strip().lower()
 
     if backend == "local":
         from app.memory.stores.local_store import LocalStore

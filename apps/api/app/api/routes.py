@@ -1,6 +1,9 @@
 from fastapi import APIRouter
 
+from app.api.memory_routes import router as memory_router
+
 router = APIRouter()
+router.include_router(memory_router, prefix="/memory", tags=["memory"])
 
 
 @router.get("/ping", tags=["system"])

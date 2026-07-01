@@ -9,12 +9,13 @@ on every backend (guardrail #5).
 
 from datetime import datetime, timedelta, timezone
 
+from app.core.config import settings
 from app.memory.store import MemoryStore
 from app.schemas.memory import MemoryEvent, MemoryWarning
 
-# Interim default; Slice 6 (which owns config.py) will resolve this from
-# settings.CONTRADICTION_WINDOW_MIN. Same value, isolated to the config-owning slice.
-DEFAULT_WINDOW_MIN = 180
+# Default look-back window, resolved from settings (env-configurable via
+# CONTRADICTION_WINDOW_MIN). Callers may still override per-call with within_minutes.
+DEFAULT_WINDOW_MIN = settings.CONTRADICTION_WINDOW_MIN
 
 
 def _parse_ts(value: str) -> datetime:
