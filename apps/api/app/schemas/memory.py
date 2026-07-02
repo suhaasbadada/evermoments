@@ -165,3 +165,34 @@ class ConsolidateRequest(BaseModel):
 class ForgetRequest(BaseModel):
     patient_id: str
     event_id: str | None = None
+
+
+ListSort = Literal["recorded_at_desc", "recorded_at_asc"]
+
+
+class ListFilters(BaseModel):
+    """Optional filters for ``POST /api/memory/list`` (all fields optional; None = no filter)."""
+
+    event_type: EventType | None = None
+    verification_status: VerificationStatus | None = None
+    date_from: str | None = None  # inclusive lower bound (ISO-8601)
+    date_to: str | None = None    # inclusive upper bound (ISO-8601)
+
+    @field_validator("date_from", "date_to")
+    @classmethod
+    def _validate_iso_bound(cls, value: str | None) -> str | None:
+        """Fail fast on a non-ISO date bound (same rule as ``MemoryEvent.recorded_at``)."""
+        if value is None:
+            return value
+        try:
+            _dt.fromisoformat(value.replace("Z", "+00:00"))
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"date bound must be ISO-8601, got {value!r}") from exc
+        return value
+
+
+class ListRequest(BaseModel):
+    patient_id: str
+    filters: ListFilters | None = None
+    sort: ListSort = "recorded_at_desc"
+    limit: int | None = Field(default=None, ge=1)

@@ -13,6 +13,7 @@ FROZEN HTTP contract (do not change paths without team sign-off):
     GET  /api/memory/health
     POST /api/memory/events
     POST /api/memory/query
+    POST /api/memory/list
     POST /api/memory/verify
     POST /api/memory/consolidate
     POST /api/memory/forget
@@ -28,8 +29,10 @@ from app.memory.store import store
 from app.schemas.memory import (
     ConsolidateRequest,
     ForgetRequest,
+    ListRequest,
     MemoryAnswer,
     MemoryEvent,
+    MemoryResult,
     MemoryWarning,
     QueryRequest,
     VerifyRequest,
@@ -50,6 +53,10 @@ class IngestResponse(BaseModel):
     event_id: str
     status: str
     warning: MemoryWarning | None = None
+
+
+class ListResponse(BaseModel):
+    results: list[MemoryResult] = Field(default_factory=list)
 
 
 class VerifyResponse(BaseModel):
@@ -99,6 +106,17 @@ def ingest_event(event: MemoryEvent) -> IngestResponse:
 def query(req: QueryRequest) -> MemoryAnswer:
     """Answer a memory question with provenance and calm, source-aware phrasing."""
     return engine.query_memory(req.patient_id, req.query, req.top_k)
+
+
+@router.post("/list", response_model=ListResponse)
+def list_memories(req: ListRequest) -> ListResponse:
+    """Enumerate a patient's memories with optional filters + sort + limit (dashboard views).
+
+    Returns the same ``MemoryResult`` rows as ``/query`` (full provenance + current
+    verification_status), read from the authoritative record — backend-agnostic.
+    """
+    rows = engine.list_memories(req.patient_id, req.filters, req.sort, req.limit)
+    return ListResponse(results=rows)
 
 
 @router.post("/verify", response_model=VerifyResponse)

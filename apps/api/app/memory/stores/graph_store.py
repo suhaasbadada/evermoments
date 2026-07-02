@@ -46,8 +46,9 @@ from app.memory.stores.local_store import (
     _norm_text,
     _parse_ts,
     _tokenize,
+    filter_sort_limit,
 )
-from app.schemas.memory import MemoryEvent, MemoryResult
+from app.schemas.memory import ListFilters, MemoryEvent, MemoryResult
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +325,18 @@ class CogneeGraphStore(MemoryStore):
             ordered = [eid for eid in ordered if q_tokens & _event_tokens(events[eid])]
 
         return [self._to_result(events[i]) for i in ordered[:top_k]]
+
+    def list_memories(
+        self,
+        patient_id: str,
+        filters: ListFilters | None = None,
+        sort: str = "recorded_at_desc",
+        limit: int | None = None,
+    ) -> list[MemoryResult]:
+        # Record-only operation: enumeration/filtering reads the authoritative record (never
+        # cognee), so /list is identical to LocalStore across backends — no cognify/search here.
+        events = filter_sort_limit(self._patient_events(patient_id), filters, sort, limit)
+        return [self._to_result(ev) for ev in events]
 
     def recent_intake_events(
         self, patient_id: str, medication_name: str, within_minutes: int

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.memory.store import MemoryStore
-from app.schemas.memory import MemoryEvent, MemoryResult
+from app.schemas.memory import ListFilters, MemoryEvent, MemoryResult
 
 # event_type -> typed graph node label
 _NODE_TYPE = {
@@ -109,6 +109,37 @@ def _person_tokens(event: MemoryEvent) -> set[str]:
     return tokens
 
 
+def filter_sort_limit(
+    events: list[MemoryEvent],
+    filters: ListFilters | None = None,
+    sort: str = "recorded_at_desc",
+    limit: int | None = None,
+) -> list[MemoryEvent]:
+    """Apply ``list_memories``' filters + sort + limit to events (pure; shared by all backends).
+
+    The single source of truth for ``/list`` semantics, so ``local`` and ``graph`` return the
+    same set and order. ``event_type`` / ``verification_status`` are exact matches; ``date_from``
+    / ``date_to`` are inclusive bounds compared via ``_parse_ts``; ordering is by ``recorded_at``
+    (desc by default, asc when ``sort == "recorded_at_asc"``); ``limit`` caps the result if set.
+    """
+    out = list(events)
+    if filters is not None:
+        if filters.event_type is not None:
+            out = [e for e in out if e.event_type == filters.event_type]
+        if filters.verification_status is not None:
+            out = [e for e in out if e.verification.status == filters.verification_status]
+        if filters.date_from is not None:
+            lo = _parse_ts(filters.date_from)
+            out = [e for e in out if _parse_ts(e.recorded_at) >= lo]
+        if filters.date_to is not None:
+            hi = _parse_ts(filters.date_to)
+            out = [e for e in out if _parse_ts(e.recorded_at) <= hi]
+    out.sort(key=lambda e: _parse_ts(e.recorded_at), reverse=(sort != "recorded_at_asc"))
+    if limit is not None:
+        out = out[:limit]
+    return out
+
+
 class LocalStore(MemoryStore):
     backend_name = "local"
 
@@ -162,6 +193,16 @@ class LocalStore(MemoryStore):
 
         scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
         return [self._to_result(ev) for _, _, ev in scored[:top_k]]
+
+    def list_memories(
+        self,
+        patient_id: str,
+        filters: ListFilters | None = None,
+        sort: str = "recorded_at_desc",
+        limit: int | None = None,
+    ) -> list[MemoryResult]:
+        events = filter_sort_limit(self._patient_events(patient_id), filters, sort, limit)
+        return [self._to_result(ev) for ev in events]
 
     def recent_intake_events(
         self, patient_id: str, medication_name: str, within_minutes: int

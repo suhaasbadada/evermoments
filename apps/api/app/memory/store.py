@@ -12,7 +12,7 @@ import os
 from abc import ABC, abstractmethod
 
 from app.core.config import settings
-from app.schemas.memory import MemoryEvent, MemoryResult, VerificationStatus
+from app.schemas.memory import ListFilters, MemoryEvent, MemoryResult, VerificationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,21 @@ class MemoryStore(ABC):
     @abstractmethod
     def query(self, patient_id: str, query_text: str, top_k: int = 5) -> list[MemoryResult]:
         """Return up to ``top_k`` relevant facts with full provenance (may be empty)."""
+
+    @abstractmethod
+    def list_memories(
+        self,
+        patient_id: str,
+        filters: ListFilters | None = None,
+        sort: str = "recorded_at_desc",
+        limit: int | None = None,
+    ) -> list[MemoryResult]:
+        """Enumerate a patient's memories with optional filters + sort + limit.
+
+        Reads the SAME authoritative record ``query()``/``set_verification()`` use, so
+        returned rows carry full provenance and the CURRENT verification_status. Applies
+        the filters, orders by ``recorded_at`` (``sort``), then caps at ``limit`` if given.
+        Backend-agnostic — listing is a pure record operation (no semantic recall)."""
 
     @abstractmethod
     def recent_intake_events(

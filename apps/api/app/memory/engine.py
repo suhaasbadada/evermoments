@@ -13,6 +13,7 @@ from app.memory.contradiction import check_double_dose
 from app.memory.store import MemoryStore
 from app.memory.store import store as current_store
 from app.schemas.memory import (
+    ListFilters,
     MemoryAnswer,
     MemoryEvent,
     MemoryResult,
@@ -92,6 +93,18 @@ def query_memory(
         results=rows,
         warnings=[],
     )
+
+
+def list_memories(
+    patient_id: str,
+    filters: ListFilters | None = None,
+    sort: str = "recorded_at_desc",
+    limit: int | None = None,
+    store: MemoryStore | None = None,
+) -> list[MemoryResult]:
+    """Enumerate a patient's memories with optional filters + sort + limit (dashboard views)."""
+    s = store or current_store()
+    return s.list_memories(patient_id, filters, sort, limit)
 
 
 def verify_memory(
