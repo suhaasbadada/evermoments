@@ -5,7 +5,7 @@
 # on the base requirements.txt alone. Install these only to exercise a cognee backend:
 #     pip install -r apps/api/requirements-memory.txt
 #
-# Left unpinned deliberately: the exact version is fixed in the Slice 7 spike, once
-# cognee's real API surface (serve/add_data_points/recall/GRAPH_COMPLETION) is
-# verified against a running import (guardrail #4).
-cognee
+# Pinned in the Slice 7 spike: cognee's real API surface (add/cognify/search +
+# SearchType.CHUNKS/GRAPH_COMPLETION, remember/recall/improve/forget, temporal_cognify
+# as a cognify flag) was verified against a running import of this exact version (guardrail #4).
+cognee==1.2.2
