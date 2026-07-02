@@ -47,6 +47,7 @@ router = APIRouter()
 class HealthResponse(BaseModel):
     backend: str
     status: str = "ok"
+    mode: str | None = None  # cognee connection mode for the graph backend: "local" | "cloud"
 
 
 class IngestResponse(BaseModel):
@@ -89,10 +90,13 @@ class SeedResponse(BaseModel):
 # --- routes ------------------------------------------------------------------
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, response_model_exclude_none=True)
 def health() -> HealthResponse:
-    """Report which MemoryStore backend is live (local | graph | blob)."""
-    return HealthResponse(backend=store().backend_name)
+    """Report which MemoryStore backend is live (local | graph | blob), plus — for the graph
+    backend — the active cognee connection mode (local | cloud). ``mode`` is omitted for
+    backends that don't have one (local/blob), so the response is unchanged for those."""
+    active = store()
+    return HealthResponse(backend=active.backend_name, mode=getattr(active, "mode", None))
 
 
 @router.post("/events", response_model=IngestResponse)

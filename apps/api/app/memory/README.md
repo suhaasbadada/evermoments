@@ -17,7 +17,7 @@ store   ──►  app/memory/store.py       MemoryStore ABC + get_store() facto
              │  backend chosen at runtime by MEMORY_BACKEND
              ├── stores/local_store.py  local  — in-memory, offline, no cognee   (default)
              ├── stores/blob_store.py    blob   — NotImplemented stub (deferred, Slice 9+)
-             └── stores/graph_store.py   graph  — cognee-backed hybrid (Slice 8)
+             └── stores/graph_store.py   graph  — cognee hybrid: local embedded OR Cognee Cloud
 ```
 
 - **Boundary contract** (`app/schemas/memory.py`): `MemoryEvent` in, `MemoryAnswer` out.
@@ -36,10 +36,26 @@ on `local` with no keys.
 |---|---|---|
 | `MEMORY_BACKEND` | `local` | `local` \| `blob` \| `graph` |
 | `CONTRADICTION_WINDOW_MIN` | `180` | Double-dose look-back window (minutes) |
-| `COGNEE_CLOUD_URL` | `""` | Managed Cognee endpoint (Slice 7+, unused on `local`) |
-| `COGNEE_API_KEY` | `""` | Managed Cognee key (Slice 7+, unused on `local`) |
-| `COGNEE_LLM_MODEL` | `gpt-4o-mini` | LLM cognee uses for extraction (Slice 7+, unused on `local`) |
-| `COGNEE_LLM_API_KEY` | `""` | LLM provider key (Slice 7+, unused on `local`) |
+| `COGNEE_MODE` | `local` | Graph-backend storage: `local` (embedded) \| `cloud` (Cognee Cloud) |
+| `COGNEE_CLOUD_URL` | `""` | Cognee Cloud endpoint — **required** for `COGNEE_MODE=cloud` |
+| `COGNEE_API_KEY` | `""` | Cognee Cloud key — **required** for `COGNEE_MODE=cloud` |
+| `COGNEE_LLM_MODEL` | `gpt-4o-mini` | LLM cognee uses for extraction (graph backend, both modes) |
+| `COGNEE_LLM_API_KEY` | `""` | OpenAI/LLM provider key (graph backend, both modes) |
+
+### Graph backend: local (embedded) vs Cognee Cloud
+
+The `graph` backend runs cognee **locally/embedded by default** (`COGNEE_MODE=local`) — graph +
+vector storage live on this machine. Set `COGNEE_MODE=cloud` **and** both `COGNEE_CLOUD_URL` +
+`COGNEE_API_KEY` to route graph/vector operations to **Cognee Cloud** instead: the store calls
+`cognee.serve(url, api_key)` at startup and `cognee.disconnect()` on shutdown.
+
+- **Fallback:** `COGNEE_MODE=cloud` with either cred missing does **not** silently pretend to be
+  cloud — it logs a warning and runs the local path. Confirm the live mode at a glance via
+  `GET /api/memory/health` → `{"backend":"graph", "mode":"local"|"cloud"}`.
+- **What changes:** cloud routes graph/vector reads/writes over the network (added latency) and
+  enables cognee auth + multi-tenant; per-patient dataset isolation (`patient_<id>`) holds in both.
+- **What doesn't:** the memory contract, `add`/`cognify`/`search(CHUNKS)`/`forget`, the provenance
+  join, and the double-dose check are identical in both modes. **OpenAI is the LLM egress in both.**
 
 ## HTTP API (frozen contract)
 
@@ -47,7 +63,7 @@ Base URL: `http://127.0.0.1:8000/api/memory`
 
 | Method & path | Body | Returns |
 |---|---|---|
-| `GET /health` | — | `{backend, status}` |
+| `GET /health` | — | `{backend, status}` (+ `mode` = `local`\|`cloud` on the graph backend) |
 | `POST /events` | `MemoryEvent` | `{event_id, status, warning}` |
 | `POST /query` | `{patient_id, query, top_k?}` | `MemoryAnswer` |
 | `POST /list` | `{patient_id, filters?, sort?, limit?}` | `{results: MemoryResult[]}` |

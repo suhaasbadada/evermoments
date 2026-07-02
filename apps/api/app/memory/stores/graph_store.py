@@ -24,6 +24,7 @@ only when ``MEMORY_BACKEND=graph`` selects this backend (lazy import in
 """
 
 import asyncio
+import atexit
 import logging
 import os
 import re
@@ -52,14 +53,23 @@ from app.schemas.memory import ListFilters, MemoryEvent, MemoryResult
 
 logger = logging.getLogger(__name__)
 
-# --- Operational env MUST be set before `import cognee` (per Slice-7 findings) ----
-# litellm reads OPENAI_API_KEY; access control off for single-user local operation;
-# the pre-flight LLM connection test retries-to-timeout on any error, so bypass it.
+# --- Mode selection + operational env (MUST be set before `import cognee`) ---------
+# COGNEE_MODE=cloud routes graph/vector ops to Cognee Cloud via serve(); anything else — or
+# cloud without both creds — runs the local/embedded path. _CLOUD is decided here, AT IMPORT,
+# so the local-only env overrides below are applied whenever we are NOT cloud-ready. That way
+# the missing-creds fallback lands on a correctly-configured local path (no late os.environ set).
+_MODE = (settings.COGNEE_MODE or "local").strip().lower()
+_CLOUD = _MODE == "cloud" and bool(settings.COGNEE_CLOUD_URL) and bool(settings.COGNEE_API_KEY)
+
+# litellm reads OPENAI_API_KEY — OpenAI is the LLM egress in BOTH modes.
 _llm_key = settings.COGNEE_LLM_API_KEY or os.environ.get("COGNEE_LLM_API_KEY", "")
 if _llm_key:
     os.environ.setdefault("OPENAI_API_KEY", _llm_key)
-os.environ.setdefault("ENABLE_BACKEND_ACCESS_CONTROL", "false")
-os.environ.setdefault("COGNEE_SKIP_CONNECTION_TEST", "true")
+if not _CLOUD:
+    # Local/embedded single-user only: access control off, and bypass the pre-flight LLM
+    # connection test (it retries-to-timeout on any error). Cloud keeps auth + the test intact.
+    os.environ.setdefault("ENABLE_BACKEND_ACCESS_CONTROL", "false")
+    os.environ.setdefault("COGNEE_SKIP_CONNECTION_TEST", "true")
 
 import cognee  # noqa: E402
 from cognee.modules.search.types import SearchType  # noqa: E402
@@ -95,9 +105,10 @@ def _init_cognee_once() -> None:
         except Exception as e:  # pragma: no cover - config surface varies
             logger.warning("cognee LLM/embedding config issue: %s", e)
 
-        # Optional: keep patient data out of the repo / default cache via COGNEE_DATA_DIR.
+        # Optional (local/embedded only): keep patient data out of the repo / default cache via
+        # COGNEE_DATA_DIR. In cloud mode storage is remote, so local-dir pinning does not apply.
         data_dir = os.environ.get("COGNEE_DATA_DIR")
-        if data_dir:
+        if not _CLOUD and data_dir:
             try:
                 cognee.config.data_root_directory(os.path.join(data_dir, "data"))
                 cognee.config.system_root_directory(os.path.join(data_dir, "system"))
@@ -137,6 +148,12 @@ def _background_loop():
 def _run(coro):
     """Marshal a cognee coroutine onto the shared background loop and block for it."""
     return asyncio.run_coroutine_threadsafe(coro, _background_loop()).result()
+
+
+def _run_maybe_async(value):
+    """serve()/disconnect() may be sync or a coroutine (per cognee version). Run either on the
+    shared background loop, so a cloud connection binds to the same loop add/cognify/search use."""
+    return _run(value) if asyncio.iscoroutine(value) else value
 
 
 def _event_body(event: MemoryEvent) -> str:
@@ -197,6 +214,44 @@ class CogneeGraphStore(MemoryStore):
         # patients with un-cognified adds (lazy, batched cognify on read)
         self._dirty: set[str] = set()
         self._lock = threading.RLock()
+
+        # Connection mode surfaced by GET /api/memory/health. "cloud" only when actually
+        # cloud-ready; a cloud request without both creds falls back to "local" (with a warning),
+        # so we never *think* we're on cloud when we're not.
+        self.mode = "cloud" if _CLOUD else "local"
+        self._connected = False
+        if _MODE == "cloud" and not _CLOUD:
+            logger.warning(
+                "COGNEE_MODE=cloud but COGNEE_CLOUD_URL/COGNEE_API_KEY are not both set — "
+                "running the LOCAL/embedded path instead (set both creds to use Cognee Cloud)."
+            )
+        elif _CLOUD:
+            self._connect_cloud()
+
+    # -- cloud connection lifecycle -------------------------------------------
+
+    def _connect_cloud(self) -> None:
+        """Open the Cognee Cloud connection via serve() at startup (cloud mode only).
+
+        Lets serve() errors propagate: if creds ARE set but the connection fails, we fail loud
+        rather than quietly degrade. serve() takes only url + api_key (no tenant_id)."""
+        _init_cognee_once()  # LLM/embedder config applies in both modes
+        _run_maybe_async(
+            cognee.serve(url=settings.COGNEE_CLOUD_URL, api_key=settings.COGNEE_API_KEY)
+        )
+        self._connected = True
+        atexit.register(self.close)
+        logger.info("CogneeGraphStore connected to Cognee Cloud at %s", settings.COGNEE_CLOUD_URL)
+
+    def close(self) -> None:
+        """Disconnect from Cognee Cloud on teardown/shutdown. Idempotent + best-effort."""
+        if not self._connected:
+            return
+        self._connected = False
+        try:
+            _run_maybe_async(cognee.disconnect())
+        except Exception as e:  # atexit runs during interpreter shutdown; never raise
+            logger.debug("cognee.disconnect() skipped: %s", e)
 
     # -- helpers --------------------------------------------------------------
 
