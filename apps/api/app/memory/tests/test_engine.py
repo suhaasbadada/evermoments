@@ -4,9 +4,9 @@ import pytest
 
 from app.memory import engine
 from app.memory.engine import EMPTY_RECALL_MESSAGE
-from app.memory.seed import BLUE_PILL_1_ID, PATIENT_ID, load_baseline
+from app.memory.seed import BLUE_PILL_1_ID, PATIENT_ID, baseline_events, load_baseline
 from app.memory.stores.local_store import LocalStore
-from app.schemas.memory import MemoryAnswer, MemoryEvent
+from app.schemas.memory import ListFilters, MemoryAnswer, MemoryEvent, MemoryResult
 
 
 @pytest.fixture()
@@ -126,3 +126,25 @@ def test_graph_delegates(store: LocalStore):
     g = engine.graph(PATIENT_ID, store=store)
     assert g["nodes"]
     assert any(n["type"] == "Patient" for n in g["nodes"])
+
+
+# -- list_memories (Slice 8c wrapper) -----------------------------------------
+
+
+def test_list_memories_delegates(store: LocalStore):
+    load_baseline(store)
+
+    # no filters -> every baseline event, as MemoryResult rows with provenance
+    all_rows = engine.list_memories(PATIENT_ID, store=store)
+    assert len(all_rows) == len(baseline_events())
+    assert all(isinstance(r, MemoryResult) for r in all_rows)
+    assert all(r.note_id and r.recorded_at and r.source for r in all_rows)
+
+    # filters / sort / limit are passed straight through to the store
+    meds = engine.list_memories(
+        PATIENT_ID, ListFilters(event_type="medication_intake"), store=store
+    )
+    assert [r.node_type for r in meds] == ["MedicationIntake"]
+
+    limited = engine.list_memories(PATIENT_ID, sort="recorded_at_asc", limit=2, store=store)
+    assert len(limited) == 2

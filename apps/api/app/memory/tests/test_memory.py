@@ -15,6 +15,8 @@ from app.schemas.memory import (
     ConsolidateRequest,
     Entities,
     ForgetRequest,
+    ListFilters,
+    ListRequest,
     Medication,
     MemoryAnswer,
     MemoryEvent,
@@ -83,6 +85,13 @@ def test_field_names_are_pinned():
     assert set(VerifyRequest.model_fields) == {"patient_id", "event_id", "status", "by"}
     assert set(ConsolidateRequest.model_fields) == {"patient_id"}
     assert set(ForgetRequest.model_fields) == {"patient_id", "event_id"}
+    assert set(ListRequest.model_fields) == {"patient_id", "filters", "sort", "limit"}
+    assert set(ListFilters.model_fields) == {
+        "event_type",
+        "verification_status",
+        "date_from",
+        "date_to",
+    }
 
 
 # --- 2. Defaults & nested parsing --------------------------------------------
@@ -228,3 +237,39 @@ def test_query_request_default_top_k():
 
 def test_forget_request_event_id_optional():
     assert ForgetRequest(patient_id="p_001").event_id is None
+
+
+# --- 9. /list request models (Slice 8c) --------------------------------------
+
+
+def test_list_request_defaults():
+    req = ListRequest(patient_id="p_001")
+    assert req.filters is None
+    assert req.sort == "recorded_at_desc"
+    assert req.limit is None
+
+
+def test_list_filters_accept_valid_iso_bounds():
+    f = ListFilters(date_from="2026-07-01T00:00:00Z", date_to="2026-07-01T23:59:59+05:30")
+    assert f.date_from and f.date_to
+
+
+def test_list_filters_dates_optional():
+    f = ListFilters(event_type="medication_intake")
+    assert f.date_from is None and f.date_to is None
+
+
+@pytest.mark.parametrize("field", ["date_from", "date_to"])
+def test_list_filters_reject_non_iso_dates(field):
+    with pytest.raises(ValidationError):
+        ListFilters(**{field: "not-a-date"})
+
+
+def test_list_request_rejects_bad_sort():
+    with pytest.raises(ValidationError):
+        ListRequest(patient_id="p_001", sort="sideways")
+
+
+def test_list_request_rejects_non_positive_limit():
+    with pytest.raises(ValidationError):
+        ListRequest(patient_id="p_001", limit=0)

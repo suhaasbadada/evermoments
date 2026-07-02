@@ -132,3 +132,70 @@ def test_two_event_isolation():
     warning = check_double_dose(s, second)
     assert warning is not None
     assert set(warning.related_note_ids) == {"evt_a", "evt_b"}
+
+
+# -- more edge cases (Slice 8d) -----------------------------------------------
+
+
+def test_multiple_medications_flags_only_the_repeated_one():
+    s = LocalStore()
+    s.add_event(
+        MemoryEvent(
+            patient_id=PATIENT_ID,
+            event_id="evt_x",
+            recorded_at="2026-07-01T08:00:00Z",
+            event_type="medication_intake",
+            entities={"medications": [{"name": "blue pill"}]},
+        )
+    )
+    # New event lists two meds, but only "blue pill" was taken recently.
+    new = MemoryEvent(
+        patient_id=PATIENT_ID,
+        event_id="evt_y",
+        recorded_at="2026-07-01T08:30:00Z",
+        event_type="medication_intake",
+        entities={"medications": [{"name": "red capsule"}, {"name": "blue pill"}]},
+    )
+    s.add_event(new)
+    warning = check_double_dose(s, new)
+    assert warning is not None
+    assert "blue pill" in warning.message
+    assert "red capsule" not in warning.message
+    assert set(warning.related_note_ids) == {"evt_x", "evt_y"}
+
+
+def test_medication_intake_with_no_medications_returns_none():
+    s = LocalStore()
+    empty = MemoryEvent(
+        patient_id=PATIENT_ID,
+        event_id="evt_empty",
+        recorded_at="2026-07-01T08:30:00Z",
+        event_type="medication_intake",  # no medications listed -> nothing to compare
+    )
+    s.add_event(empty)
+    assert check_double_dose(s, empty) is None
+
+
+def test_window_boundary_is_inclusive():
+    s = LocalStore()
+    s.add_event(
+        MemoryEvent(
+            patient_id=PATIENT_ID,
+            event_id="evt_1",
+            recorded_at="2026-07-01T08:00:00Z",
+            event_type="medication_intake",
+            entities={"medications": [{"name": "blue pill"}]},
+        )
+    )
+    second = MemoryEvent(
+        patient_id=PATIENT_ID,
+        event_id="evt_2",
+        recorded_at="2026-07-01T09:00:00Z",  # exactly 60 min after the first
+        event_type="medication_intake",
+        entities={"medications": [{"name": "blue pill"}]},
+    )
+    s.add_event(second)
+    # 60-min window: the boundary is inclusive, so it still fires.
+    assert check_double_dose(s, second, within_minutes=60) is not None
+    # 59-min window: just outside, so it's suppressed.
+    assert check_double_dose(s, second, within_minutes=59) is None

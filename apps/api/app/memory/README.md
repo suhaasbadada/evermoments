@@ -148,10 +148,41 @@ curl -X POST $BASE/forget -H 'Content-Type: application/json' \
   -d '{"patient_id":"p_001","event_id":"evt_routine"}'
 ```
 
-## Run the offline demo & tests
+## Run the offline demo
 
 ```bash
-# from apps/api (with the repo .venv active)
+# from apps/api (with the venv active)
 PYTHONPATH=. python -m app.memory.seed     # scripted end-to-end trace on the active backend
-pytest app/memory                          # module test suite
 ```
+
+## Testing (two tiers)
+
+The suite is split by cost. **Tier 1 is the default and always free**; Tier 2 is opt-in.
+
+```bash
+# one-time: install runtime + test deps (test deps add pytest + httpx for TestClient)
+pip install -r requirements.txt -r requirements-dev.txt
+```
+
+**Tier 1 — default, free, offline (LocalStore).** The bulk: contract validation, engine,
+double-dose (all suppression cases), list/filter, and full HTTP E2E via FastAPI's TestClient.
+Makes **zero** network calls — an autouse socket guard fails any test that tries one — so it
+never touches the OpenAI key. `cognee`-marked tests are deselected by `pytest.ini`.
+
+```bash
+PYTHONPATH=. pytest app/memory             # everything except Tier 2 — $0, no network
+```
+
+**Tier 2 — gated, real cognee + OpenAI (costs ~cents, needs a key).** A tiny suite proving only
+what can't be shown offline: cognee connect, live ingest→cognify, `SearchType.CHUNKS` recall
+with the provenance join, verification reflected in recall, and live forget. One 3-event fixture
+is cognified once and reused; the dataset is pruned afterward. Excluded from the default run —
+opt in with `-m cognee`. Set a key (`apps/api/.env` → `COGNEE_LLM_API_KEY=…`, or `OPENAI_API_KEY`),
+then:
+
+```bash
+MEMORY_BACKEND=graph PYTHONPATH=. pytest -m cognee -s app/memory
+```
+
+Total OpenAI token usage is printed at the end. Model/embedder stay pinned to `gpt-4o-mini` +
+`text-embedding-3-small`.

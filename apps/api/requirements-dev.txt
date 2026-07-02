@@ -1,0 +1,6 @@
+# Test-only dependencies. Install alongside the runtime deps:
+#     pip install -r requirements.txt -r requirements-dev.txt
+#
+# httpx is required by FastAPI's TestClient (starlette) used in the HTTP/E2E suite.
+pytest>=8.0,<9.0
+httpx>=0.27,<1.0
