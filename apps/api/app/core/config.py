@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     COGNEE_LLM_MODEL: str = "gpt-4o-mini"  # LLM cognee uses to extract (Slice 7+)
     COGNEE_LLM_API_KEY: str = ""           # LLM provider key           (Slice 7+)
 
+    # --- Voice Ingest / STT (Module 2) --------------------------------------
+    STT_BACKEND: str = "offline"  # offline | openai
+    STT_MODEL: str = "gpt-4o-mini-transcribe"
+    STT_TIMEOUT_SEC: float = 45.0
+    OPENAI_API_KEY: str = ""
+    OPENAI_TRANSCRIBE_URL: str = "https://api.openai.com/v1/audio/transcriptions"
+
     model_config = SettingsConfigDict(env_file="apps/api/.env", extra="ignore")
 
     @property
