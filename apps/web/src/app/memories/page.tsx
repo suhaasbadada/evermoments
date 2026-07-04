@@ -75,43 +75,41 @@ export default function MemoriesPage() {
   }, [loadMemories]);
 
   return (
-    <main className="min-h-screen bg-amber-50 flex flex-col px-6 py-10 gap-6 max-w-xl mx-auto">
+    <main className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 flex flex-col px-6 py-10 gap-6 max-w-xl mx-auto">
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-2 text-amber-800 text-lg self-start"
+        className="flex items-center gap-2 text-stone-500 hover:text-stone-700 text-lg self-start transition-colors"
       >
         <ArrowLeft className="h-5 w-5" aria-hidden="true" />
         Back
       </button>
 
-      <h1 className="text-4xl font-bold text-amber-900">Today&apos;s Memories</h1>
+      <h1 className="text-4xl font-bold text-stone-800">Today&apos;s Memories</h1>
 
       {loading && (
         <div className="flex flex-col items-center gap-4 py-10">
           <Loader2
-            className="h-14 w-14 text-amber-600 animate-spin"
+            className="h-14 w-14 text-teal-500 animate-spin"
             aria-hidden="true"
           />
-          <p className="text-xl text-amber-700">Loading your memories…</p>
+          <p className="text-xl text-stone-500">Loading your memories…</p>
         </div>
       )}
 
       {error && (
         <div
           role="alert"
-          className="rounded-2xl bg-red-50 border border-red-300 p-5"
+          className="rounded-2xl bg-red-50 border border-red-200 p-5 shadow-sm"
         >
-          <p className="text-lg text-red-800">{error}</p>
+          <p className="text-lg text-red-700">{error}</p>
         </div>
       )}
 
       {!loading && !error && memories.length === 0 && (
-        <div className="rounded-2xl bg-white border border-amber-200 p-8 text-center shadow">
-          <p className="text-5xl mb-3" aria-hidden="true">
-            🌱
-          </p>
-          <p className="text-2xl text-amber-700">No memories yet.</p>
-          <p className="text-lg text-amber-600 mt-2">
+        <div className="rounded-3xl bg-white border border-stone-100 p-8 text-center shadow-sm">
+          <p className="text-5xl mb-3" aria-hidden="true">🌱</p>
+          <p className="text-2xl text-stone-700">No memories yet.</p>
+          <p className="text-lg text-stone-400 mt-2">
             Record your first memory to get started!
           </p>
         </div>
@@ -121,16 +119,14 @@ export default function MemoriesPage() {
         {memories.map((m, i) => (
           <div
             key={i}
-            className="rounded-2xl bg-white border border-amber-200 shadow-sm p-5"
+            className="rounded-2xl bg-white border border-stone-100 shadow-sm hover:shadow-md transition-shadow p-5"
           >
-            <p className="text-lg text-slate-900 leading-relaxed">{m.fact}</p>
+            <p className="text-lg text-stone-800 leading-relaxed">{m.fact}</p>
             <div className="flex flex-wrap items-center gap-2 mt-3">
-              <span className="text-sm text-slate-500">
+              <span className="text-sm text-stone-400">
                 {formatDate(m.recorded_at)}
               </span>
-              <span className="text-slate-300" aria-hidden="true">
-                ·
-              </span>
+              <span className="text-stone-300" aria-hidden="true">·</span>
               <VerificationBadge
                 status={m.verification_status}
                 by={m.verified_by}
