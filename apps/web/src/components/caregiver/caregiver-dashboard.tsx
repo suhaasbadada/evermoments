@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, ShieldAlert } from "lucide-react";
+import { LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { memoryClient } from "@/lib/memory/client";
@@ -22,6 +22,26 @@ export function CaregiverDashboard() {
   const [activeTab, setActiveTab] = useState<CaregiverTab>("attention");
   const [caregiverName, setCaregiverName] = useState("Ravi");
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
+
+  function fetchMemories(opts?: { silent?: boolean }) {
+    const silent = opts?.silent ?? false;
+    if (!silent) setRefreshing(true);
+    return memoryClient
+      .listMemories({ patient_id: DEFAULT_PATIENT_ID, sort: "recorded_at_desc" })
+      .then((results) => {
+        setMemories(results);
+        setLoading(false);
+        setError(null);
+      })
+      .catch(() => {
+        if (!silent) setError("Could not load memories.");
+        setLoading(false);
+      })
+      .finally(() => {
+        if (!silent) setRefreshing(false);
+      });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -41,8 +61,14 @@ export function CaregiverDashboard() {
         }
       });
 
+    // Poll every 15 seconds so new patient memories appear automatically
+    const interval = setInterval(() => {
+      if (!cancelled) fetchMemories({ silent: true });
+    }, 15000);
+
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 
@@ -119,14 +145,25 @@ export function CaregiverDashboard() {
           <ShieldAlert className="h-6 w-6 text-rose-600" aria-hidden="true" />
           <h1 className="text-xl font-semibold text-slate-900">Caregiver Dashboard</h1>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          Verifying as
-          <input
-            value={caregiverName}
-            onChange={(e) => setCaregiverName(e.target.value)}
-            className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
-          />
-        </label>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => fetchMemories()}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            title="Refresh memories"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
+            Refresh
+          </button>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            Verifying as
+            <input
+              value={caregiverName}
+              onChange={(e) => setCaregiverName(e.target.value)}
+              className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+            />
+          </label>
+        </div>
       </div>
 
       <ConsolidatePanel patientId={DEFAULT_PATIENT_ID} />

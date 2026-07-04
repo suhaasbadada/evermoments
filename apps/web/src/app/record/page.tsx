@@ -512,7 +512,7 @@ export default function RecordMemoryPage() {
       {step === "transcribing" && (
         <div className="flex flex-col items-center gap-3 pt-10">
           <Loader2
-            className={`h-10 w-10 ${sundownMode ? "text-indigo-400" : "text-teal-500"} animate-spin`}
+            className="h-10 w-10 text-teal-500 animate-spin"
             aria-hidden="true"
           />
           <p className={`text-sm ${subtextCls}`}>Processing your words…</p>
