@@ -17,6 +17,13 @@ const EXAMPLE_QUERIES = [
   "What did the doctor say?",
 ];
 
+const CHIP_COLORS = [
+  "bg-rose-100 text-rose-700 hover:bg-rose-200",
+  "bg-sky-100 text-sky-700 hover:bg-sky-200",
+  "bg-teal-100 text-teal-700 hover:bg-teal-200",
+  "bg-violet-100 text-violet-700 hover:bg-violet-200",
+];
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleString("en-US", {
@@ -32,7 +39,7 @@ function formatDate(iso: string): string {
 
 function SourceLine({ result }: { result: MemoryResult }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 mt-3 text-sm text-slate-500">
+    <div className="flex flex-wrap items-center gap-2 mt-3 text-sm text-stone-400">
       <span>{formatDate(result.recorded_at)}</span>
       <span aria-hidden="true">·</span>
       <span className="capitalize">{result.source.replace(/_/g, " ")}</span>
@@ -74,24 +81,24 @@ export default function AskMemoryPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-amber-50 flex flex-col px-6 py-10 gap-6 max-w-xl mx-auto">
+    <main className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 flex flex-col px-6 py-10 gap-6 max-w-xl mx-auto">
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-2 text-amber-800 text-lg self-start"
+        className="flex items-center gap-2 text-stone-500 hover:text-stone-700 text-lg self-start transition-colors"
       >
         <ArrowLeft className="h-5 w-5" aria-hidden="true" />
         Back
       </button>
 
-      <h1 className="text-4xl font-bold text-amber-900">Ask My Memory</h1>
+      <h1 className="text-4xl font-bold text-stone-800">Ask My Memory</h1>
 
       {/* Example prompt chips */}
       <div className="flex flex-wrap gap-2" role="group" aria-label="Example questions">
-        {EXAMPLE_QUERIES.map((q) => (
+        {EXAMPLE_QUERIES.map((q, i) => (
           <button
             key={q}
             onClick={() => submit(q)}
-            className="rounded-full bg-blue-100 px-4 py-2 text-base text-blue-800 font-medium hover:bg-blue-200 active:scale-95 transition-transform"
+            className={`rounded-full px-4 py-2 text-base font-medium active:scale-95 transition-all ${CHIP_COLORS[i % CHIP_COLORS.length]}`}
           >
             {q}
           </button>
@@ -109,13 +116,13 @@ export default function AskMemoryPage() {
           }}
           placeholder="Type your question here…"
           aria-label="Ask a question about your memories"
-          className="flex-1 rounded-2xl border-2 border-amber-300 bg-white px-5 py-4 text-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+          className="flex-1 rounded-2xl border-2 border-stone-200 bg-white px-5 py-4 text-xl text-stone-800 placeholder:text-stone-300 focus:outline-none focus:border-sky-400 transition-colors shadow-sm"
         />
         <button
           onClick={() => submit(query)}
           disabled={loading}
           aria-label="Search memories"
-          className="rounded-2xl bg-blue-600 px-5 py-4 text-white shadow-lg disabled:opacity-50 active:scale-95 transition-transform"
+          className="rounded-2xl bg-sky-500 hover:bg-sky-600 px-5 py-4 text-white shadow-lg shadow-sky-200 disabled:opacity-50 active:scale-95 transition-all"
         >
           <Search className="h-7 w-7" aria-hidden="true" />
         </button>
@@ -125,10 +132,10 @@ export default function AskMemoryPage() {
       {loading && (
         <div className="flex flex-col items-center gap-4 py-8">
           <Loader2
-            className="h-14 w-14 text-blue-600 animate-spin"
+            className="h-14 w-14 text-sky-500 animate-spin"
             aria-hidden="true"
           />
-          <p className="text-xl text-amber-700">
+          <p className="text-xl text-stone-500">
             Looking through your memories…
           </p>
         </div>
@@ -138,9 +145,9 @@ export default function AskMemoryPage() {
       {error && (
         <div
           role="alert"
-          className="rounded-2xl bg-red-50 border border-red-300 p-5"
+          className="rounded-2xl bg-red-50 border border-red-200 p-5 shadow-sm"
         >
-          <p className="text-lg text-red-800">{error}</p>
+          <p className="text-lg text-red-700">{error}</p>
         </div>
       )}
 
@@ -153,8 +160,8 @@ export default function AskMemoryPage() {
           ))}
 
           {/* Primary answer card */}
-          <div className="rounded-2xl bg-white border border-amber-200 shadow p-6">
-            <p className="text-2xl font-semibold text-slate-900 leading-relaxed">
+          <div className="rounded-2xl bg-white border border-stone-100 shadow-md p-6">
+            <p className="text-2xl font-semibold text-stone-800 leading-relaxed">
               {answer.answer}
             </p>
             {answer.results[0] && <SourceLine result={answer.results[0]} />}
@@ -164,16 +171,16 @@ export default function AskMemoryPage() {
           {answer.results.slice(1).map((r, i) => (
             <div
               key={i}
-              className="rounded-xl bg-white border border-slate-200 p-5"
+              className="rounded-2xl bg-white border border-stone-100 shadow-sm p-5"
             >
-              <p className="text-lg text-slate-800 leading-relaxed">{r.fact}</p>
+              <p className="text-lg text-stone-700 leading-relaxed">{r.fact}</p>
               <SourceLine result={r} />
             </div>
           ))}
 
           {answer.results.length === 0 && (
-            <div className="rounded-2xl bg-amber-100 border border-amber-200 p-6 text-center">
-              <p className="text-xl text-amber-800">
+            <div className="rounded-2xl bg-amber-50 border border-amber-100 p-6 text-center shadow-sm">
+              <p className="text-xl text-amber-700">
                 I could not find anything about that. Try asking a different way.
               </p>
             </div>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, Square, Check, ArrowLeft, Loader2 } from "lucide-react";
+import { Mic, Square, Check, ArrowLeft, Loader2, Type, Upload } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import { ingestMemoryEvent } from "@/lib/memoryClient";
 import type { MemoryEvent, MemoryWarning } from "@/lib/memoryClient";
@@ -16,6 +16,8 @@ type Step =
   | "saving"
   | "done"
   | "error";
+
+type InputMode = "voice" | "text" | "upload";
 
 const PATIENT_ID = "p_001";
 
@@ -89,12 +91,53 @@ export default function RecordMemoryPage() {
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const transcriptRef = useRef("");
   const speechErrorRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [sundownMode, setSundownMode] = useState(false);
+  const [inputMode, setInputMode] = useState<InputMode>("voice");
+  const [textInput, setTextInput] = useState("");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [transcript, setTranscript] = useState("");
   const [pendingEvent, setPendingEvent] = useState<Partial<MemoryEvent> | null>(null);
   const [warning, setWarning] = useState<MemoryWarning | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("sundownMode");
+    if (stored !== null) setSundownMode(stored === "true");
+  }, []);
+
+  // Theme classes
+  const bg = sundownMode
+    ? "bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900"
+    : "bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50";
+  const headingCls = sundownMode ? "text-indigo-100" : "text-stone-800";
+  const subtextCls = sundownMode ? "text-indigo-300" : "text-stone-500";
+  const backCls = sundownMode ? "text-slate-400 hover:text-slate-200" : "text-stone-500 hover:text-stone-700";
+  const cardCls = sundownMode
+    ? "bg-white/5 border-white/10 backdrop-blur-sm"
+    : "bg-white border-stone-100";
+  const cardLabelCls = sundownMode ? "text-indigo-300" : "text-stone-400";
+  const cardBodyCls = sundownMode ? "text-indigo-100" : "text-stone-800";
+  const retryBtnCls = sundownMode
+    ? "bg-white/10 text-slate-200 hover:bg-white/20"
+    : "bg-stone-100 text-stone-700 hover:bg-stone-200";
+  const tabActiveCls = sundownMode
+    ? "bg-violet-700 text-white"
+    : "bg-rose-400 text-white";
+  const tabInactiveCls = sundownMode
+    ? "bg-white/5 text-slate-400 hover:bg-white/10"
+    : "bg-white text-stone-500 hover:bg-stone-50";
+  const tabBorderCls = sundownMode
+    ? "border-white/10 divide-white/10"
+    : "border-stone-200 divide-stone-200";
+  const textareaCls = sundownMode
+    ? "border-white/10 bg-white/5 text-indigo-100 placeholder-indigo-500"
+    : "border-stone-200 bg-white text-stone-800 placeholder-stone-300";
+  const uploadBorderCls = sundownMode
+    ? "border-white/20 text-indigo-300 hover:border-white/40"
+    : "border-stone-300 text-stone-500 hover:border-rose-400";
 
   const stopSpeechRecognition = useCallback(async (): Promise<void> => {
     const recognition = speechRecognitionRef.current;
@@ -128,7 +171,6 @@ export default function RecordMemoryPage() {
   }, []);
 
   const startRecording = useCallback(async () => {
-    // Guard: API not available (non-secure context, or old browser)
     if (!navigator.mediaDevices?.getUserMedia) {
       setErrorMsg(
         "Audio recording is not supported in this browser. Please use Chrome or Edge."
@@ -216,7 +258,6 @@ export default function RecordMemoryPage() {
           try {
             partial = await extractMemoryFromTranscript(spokenTranscript);
           } catch {
-            // Keep the patient flow unblocked if API extraction is temporarily unavailable.
             partial = {
               transcript: spokenTranscript,
               event_type: "general",
@@ -270,13 +311,57 @@ export default function RecordMemoryPage() {
     mediaRecorderRef.current?.stop();
   }, []);
 
+  const submitTextMemory = useCallback(async () => {
+    if (!textInput.trim()) return;
+    setStep("transcribing");
+    try {
+      let partial: Partial<MemoryEvent>;
+      try {
+        partial = await extractMemoryFromTranscript(textInput.trim());
+      } catch {
+        partial = {
+          transcript: textInput.trim(),
+          event_type: "general",
+        };
+      }
+      setPendingEvent(partial);
+      setTranscript(partial.transcript ?? textInput.trim());
+      setStep("confirm");
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error
+          ? err.message
+          : "Could not process your text. Please try again."
+      );
+      setStep("error");
+    }
+  }, [textInput]);
+
+  const submitFileMemory = useCallback(() => {
+    if (!uploadedFile) return;
+    const fileDescription = `Uploaded file: ${uploadedFile.name}`;
+    const partial: Partial<MemoryEvent> = {
+      transcript: fileDescription,
+      event_type: "general",
+    };
+    setPendingEvent(partial);
+    setTranscript(fileDescription);
+    setStep("confirm");
+  }, [uploadedFile]);
+
   const saveMemory = useCallback(async () => {
     if (!pendingEvent) return;
     setStep("saving");
     try {
+      const source =
+        inputMode === "upload"
+          ? "document"
+          : inputMode === "text"
+          ? "manual"
+          : "voice_note";
       const event: MemoryEvent = {
         patient_id: PATIENT_ID,
-        source: "voice_note",
+        source,
         recorded_at: new Date().toISOString(),
         event_type: pendingEvent.event_type ?? "general",
         transcript: pendingEvent.transcript ?? null,
@@ -299,7 +384,7 @@ export default function RecordMemoryPage() {
       }
       setStep("error");
     }
-  }, [pendingEvent]);
+  }, [pendingEvent, inputMode]);
 
   const reset = useCallback(() => {
     setStep("idle");
@@ -307,37 +392,121 @@ export default function RecordMemoryPage() {
     setPendingEvent(null);
     setWarning(null);
     setErrorMsg("");
+    setTextInput("");
+    setUploadedFile(null);
     transcriptRef.current = "";
     speechErrorRef.current = null;
   }, []);
 
   return (
-    <main className="min-h-screen bg-amber-50 flex flex-col px-6 py-10 gap-6 max-w-xl mx-auto">
+    <main className={`min-h-screen ${bg} flex flex-col px-6 py-10 gap-6 max-w-xl mx-auto`}>
       <button
         type="button"
         onClick={() => router.back()}
-        className="flex items-center gap-2 text-amber-800 text-lg self-start"
+        className={`flex items-center gap-2 ${backCls} text-lg self-start`}
       >
         <ArrowLeft className="h-5 w-5" aria-hidden="true" />
         Back
       </button>
 
-      <h1 className="text-4xl font-bold text-amber-900">Record a Memory</h1>
+      <h1 className={`text-4xl font-bold ${headingCls}`}>Record a Memory</h1>
 
       {/* ── Idle ─────────────────────────────────────────────────────── */}
       {step === "idle" && (
-        <div className="flex flex-col items-center gap-8 pt-6">
-          <p className="text-2xl text-amber-700 text-center">
-            Tap the button and speak
-          </p>
-          <button
-            type="button"
-            onClick={startRecording}
-            className="h-44 w-44 rounded-full bg-rose-500 flex items-center justify-center shadow-2xl active:scale-95 transition-transform"
-            aria-label="Start recording"
-          >
-            <Mic className="h-24 w-24 text-white" aria-hidden="true" />
-          </button>
+        <div className="flex flex-col gap-6">
+          {/* Mode selector */}
+          <div className={`flex rounded-2xl overflow-hidden border ${tabBorderCls} divide-x`}>
+            {(["voice", "text", "upload"] as InputMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setInputMode(mode)}
+                className={`flex-1 py-3 text-lg font-medium transition-colors ${
+                  inputMode === mode ? tabActiveCls : tabInactiveCls
+                }`}
+              >
+                {mode === "voice" && "🎙 Voice"}
+                {mode === "text" && "✏️ Type"}
+                {mode === "upload" && "📎 Upload"}
+              </button>
+            ))}
+          </div>
+
+          {/* Voice mode */}
+          {inputMode === "voice" && (
+            <div className="flex flex-col items-center gap-8 pt-4">
+              <p className={`text-2xl ${subtextCls} text-center`}>
+                Tap the button and speak
+              </p>
+              <button
+                type="button"
+                onClick={startRecording}
+                className="h-44 w-44 rounded-full bg-rose-500 flex items-center justify-center shadow-2xl active:scale-95 transition-transform"
+                aria-label="Start recording"
+              >
+                <Mic className="h-24 w-24 text-white" aria-hidden="true" />
+              </button>
+            </div>
+          )}
+
+          {/* Text mode */}
+          {inputMode === "text" && (
+            <div className="flex flex-col gap-4 pt-2">
+              <p className={`text-2xl ${subtextCls}`}>Type your memory</p>
+              <textarea
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                placeholder="Write what you'd like to remember..."
+                rows={5}
+                className={`w-full rounded-2xl border ${textareaCls} p-4 text-xl focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none`}
+              />
+              <button
+                type="button"
+                onClick={submitTextMemory}
+                disabled={!textInput.trim()}
+                className="w-full rounded-2xl bg-rose-500 px-6 py-6 text-2xl font-semibold text-white shadow-lg active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              >
+                <Type className="h-7 w-7" aria-hidden="true" />
+                Save text memory
+              </button>
+            </div>
+          )}
+
+          {/* Upload mode */}
+          {inputMode === "upload" && (
+            <div className="flex flex-col gap-4 pt-2">
+              <p className={`text-2xl ${subtextCls}`}>Upload a file</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                className="hidden"
+                onChange={(e) => setUploadedFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className={`w-full rounded-2xl border-2 border-dashed ${uploadBorderCls} px-6 py-10 text-xl flex flex-col items-center gap-3 transition-colors`}
+              >
+                <Upload className="h-12 w-12" aria-hidden="true" />
+                {uploadedFile ? (
+                  <span className="font-medium break-all">{uploadedFile.name}</span>
+                ) : (
+                  <span>Tap to choose a photo or PDF</span>
+                )}
+              </button>
+              {uploadedFile && (
+                <button
+                  type="button"
+                  onClick={submitFileMemory}
+                  className="w-full rounded-2xl bg-rose-500 px-6 py-6 text-2xl font-semibold text-white shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3"
+                >
+                  <Check className="h-7 w-7" aria-hidden="true" />
+                  Save this file
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -355,7 +524,7 @@ export default function RecordMemoryPage() {
           >
             <Square className="h-24 w-24 text-white" aria-hidden="true" />
           </button>
-          <p className="text-xl text-amber-600">Tap to stop</p>
+          <p className={`text-xl ${subtextCls}`}>Tap to stop</p>
         </div>
       )}
 
@@ -363,19 +532,21 @@ export default function RecordMemoryPage() {
       {step === "transcribing" && (
         <div className="flex flex-col items-center gap-5 pt-12">
           <Loader2
-            className="h-16 w-16 text-amber-600 animate-spin"
+            className={`h-16 w-16 ${sundownMode ? "text-indigo-400" : "text-rose-400"} animate-spin`}
             aria-hidden="true"
           />
-          <p className="text-2xl text-amber-700">Processing your words…</p>
+          <p className={`text-2xl ${subtextCls}`}>Processing your words…</p>
         </div>
       )}
 
       {/* ── Confirm ──────────────────────────────────────────────────── */}
       {step === "confirm" && (
         <div className="flex flex-col gap-5">
-          <div className="rounded-2xl bg-white border border-amber-200 shadow p-6">
-            <p className="text-lg text-amber-600 mb-2">I heard:</p>
-            <p className="text-2xl font-medium text-slate-900 leading-relaxed">
+          <div className={`rounded-2xl ${cardCls} border shadow p-6`}>
+            <p className={`text-lg ${cardLabelCls} mb-2`}>
+              {inputMode === "upload" ? "File selected:" : inputMode === "text" ? "You wrote:" : "I heard:"}
+            </p>
+            <p className={`text-2xl font-medium ${cardBodyCls} leading-relaxed`}>
               {transcript}
             </p>
           </div>
@@ -390,7 +561,7 @@ export default function RecordMemoryPage() {
           <button
             type="button"
             onClick={reset}
-            className="w-full rounded-2xl bg-amber-100 px-6 py-5 text-xl font-medium text-amber-900 active:scale-95 transition-transform"
+            className={`w-full rounded-2xl ${retryBtnCls} px-6 py-5 text-xl font-medium active:scale-95 transition-transform`}
           >
             Try again
           </button>
@@ -404,7 +575,7 @@ export default function RecordMemoryPage() {
             className="h-16 w-16 text-green-600 animate-spin"
             aria-hidden="true"
           />
-          <p className="text-2xl text-amber-700">Saving your memory…</p>
+          <p className={`text-2xl ${subtextCls}`}>Saving your memory…</p>
         </div>
       )}
 
@@ -432,7 +603,7 @@ export default function RecordMemoryPage() {
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="w-full rounded-2xl bg-amber-100 px-6 py-5 text-xl font-medium text-amber-900 active:scale-95 transition-transform"
+            className={`w-full rounded-2xl ${retryBtnCls} px-6 py-5 text-xl font-medium active:scale-95 transition-transform`}
           >
             Go home
           </button>
