@@ -301,3 +301,42 @@ def test_demo_spine_end_to_end(client):
     ).json() == {"forgot": True}
     routine = client.post(f"{BASE}/query", json={"patient_id": "p_001", "query": "water the plants"}).json()
     assert all(row["note_id"] != "evt_routine" for row in routine["results"])
+
+
+def test_query_who_visited_fallback(client):
+    _seed(client)
+    r = client.post(f"{BASE}/query", json={"patient_id": "p_001", "query": "who visited me"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["results"]
+    assert body["results"][0]["node_type"] == "PersonMention"
+
+
+def test_query_activity_fallback_returns_recent(client):
+    _seed(client)
+    r = client.post(f"{BASE}/query", json={"patient_id": "p_001", "query": "what did i do"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["results"]
+
+
+def test_query_eating_fallback_prefers_food_memory(client):
+    _seed(client)
+    client.post(
+        f"{BASE}/events",
+        json={
+            "patient_id": "p_001",
+            "recorded_at": "2026-07-04T04:00:00Z",
+            "event_type": "person_mention",
+            "transcript": "My mom came over for pizza tonight and we watched a movie.",
+            "entities": {
+                "people": [{"name": "mom"}],
+                "time_reference": "tonight",
+            },
+        },
+    )
+    r = client.post(f"{BASE}/query", json={"patient_id": "p_001", "query": "what am i eating"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["results"]
+    assert "pizza" in body["results"][0]["fact"].lower()

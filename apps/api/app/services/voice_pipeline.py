@@ -2,15 +2,17 @@ import re
 
 from app.schemas.memory import Appointment, Entities, EventType, Medication, ObjectItem, Person
 
-_MEDICATION_RE = re.compile(r"\b(pill|tablet|capsule|medicine|medication|dose|took|take|taken)\b", re.I)
+_MEDICATION_RE = re.compile(r"\b(pill|tablet|capsule|medicine|medication|dose)\b", re.I)
 _OBJECT_RE = re.compile(r"\b(wallet|keys|phone|glasses|remote|bag|purse)\b", re.I)
 _LOCATION_RE = re.compile(r"\b(near|in|on|at|under|by)\b\s+([^,.!?]+)", re.I)
-_APPOINTMENT_RE = re.compile(r"\b(appointment|doctor|clinic|checkup|check-up|visit)\b", re.I)
+_APPOINTMENT_RE = re.compile(r"\b(appointment|doctor|clinic|checkup|check-up)\b", re.I)
 _TIME_REF_RE = re.compile(
     r"\b(today|yesterday|tomorrow|this morning|this evening|after breakfast|after lunch|after dinner|morning|evening|night|\d{1,2}(?::\d{2})?\s?(?:am|pm))\b",
     re.I,
 )
 _PERSON_RE = re.compile(r"\b([A-Z][a-z]{1,20})\b")
+_PERSON_STOPWORDS = {"i", "my", "we", "he", "she", "they", "it"}
+_KINSHIP_RE = re.compile(r"\b(mom|mother|dad|father|son|daughter|brother|sister|husband|wife)\b", re.I)
 
 
 def _time_reference(text: str) -> str | None:
@@ -72,7 +74,15 @@ def classify_and_extract(transcript: str) -> tuple[EventType, Entities]:
             ),
         )
 
-    person_matches = [name for name in _PERSON_RE.findall(text) if name.lower() not in {"i"}]
+    kinship_match = _KINSHIP_RE.search(text)
+    if kinship_match:
+        kinship = kinship_match.group(1)
+        return (
+            "person_mention",
+            Entities(people=[Person(name=kinship.capitalize())], time_reference=_time_reference(text)),
+        )
+
+    person_matches = [name for name in _PERSON_RE.findall(text) if name.lower() not in _PERSON_STOPWORDS]
     if person_matches:
         return (
             "person_mention",

@@ -38,6 +38,7 @@ def _no_network(request, monkeypatch):
 def client(monkeypatch):
     """A TestClient bound to a fresh, offline LocalStore backend (one per test)."""
     monkeypatch.setenv("MEMORY_BACKEND", "local")
+    monkeypatch.setenv("MEMORY_LOCAL_PERSIST_PATH", "")
 
     from app.main import app
     from app.memory.store import reset_store

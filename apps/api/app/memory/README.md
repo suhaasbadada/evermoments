@@ -53,7 +53,8 @@ on `local` with no keys.
 | `COGNEE_CLOUD_URL` | `""` | Cognee Cloud endpoint — **required** for `COGNEE_MODE=cloud` |
 | `COGNEE_API_KEY` | `""` | Cognee Cloud key — **required** for `COGNEE_MODE=cloud` |
 | `COGNEE_LLM_MODEL` | `gpt-4o-mini` | LLM cognee uses for extraction (graph backend, both modes) |
-| `COGNEE_LLM_API_KEY` | `""` | OpenAI/LLM provider key (graph backend, both modes) |
+| `COGNEE_LLM_API_KEY` | `""` | Cognee LLM key (preferred). If blank, backend falls back to `OPENAI_API_KEY` |
+| `OPENAI_API_KEY` | `""` | OpenAI-compatible key used by Cognee graph recall/indexing when `COGNEE_LLM_API_KEY` is blank |
 | `STT_BACKEND` | `offline` | `offline` \| `openai` for `/api/ingest/voice-note` |
 | `STT_MODEL` | `gpt-4o-mini-transcribe` | OpenAI transcription model for binary audio |
 | `STT_TIMEOUT_SEC` | `45` | Timeout for the transcription HTTP request |
@@ -73,7 +74,10 @@ vector storage live on this machine. Set `COGNEE_MODE=cloud` **and** both `COGNE
 - **What changes:** cloud routes graph/vector reads/writes over the network (added latency) and
   enables cognee auth + multi-tenant; per-patient dataset isolation (`patient_<id>`) holds in both.
 - **What doesn't:** the memory contract, `add`/`cognify`/`search(CHUNKS)`/`forget`, the provenance
-  join, and the double-dose check are identical in both modes. **OpenAI is the LLM egress in both.**
+  join, and the double-dose check are identical in both modes.
+- **Key behavior:** Cognee graph recall/indexing needs `COGNEE_LLM_API_KEY` (or `OPENAI_API_KEY` as
+  fallback). If both are missing, the graph backend still stores authoritative records and answers via
+  deterministic lexical fallback so the API remains available.
 
 ## HTTP API (frozen contract)
 

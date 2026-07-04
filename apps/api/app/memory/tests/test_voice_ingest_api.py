@@ -36,6 +36,18 @@ def test_stt_alias_route(client):
     assert response.json()["event_type"] == "person_mention"
 
 
+def test_stt_visit_phrase_is_person_mention_not_appointment(client):
+    response = client.post(
+        "/api/stt",
+        json={"transcript": "My mom came to visit me today and we watched a movie."},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["event_type"] == "person_mention"
+    assert body["entities"]["people"][0]["name"].lower() == "mom"
+
+
 def test_stt_rejects_empty_transcript(client):
     response = client.post("/api/stt", json={"transcript": "   "})
     assert response.status_code == 422

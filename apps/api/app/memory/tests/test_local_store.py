@@ -118,6 +118,31 @@ def test_query_no_match_is_empty(local: LocalStore):
     assert local.query(PID, "xyzzy quux") == []
 
 
+def test_appointment_fact_prefers_transcript_when_summary_is_generic():
+    s = LocalStore()
+    eid = s.add_event(
+        MemoryEvent(
+            patient_id=PID,
+            recorded_at="2026-07-04T09:30:00Z",
+            event_type="appointment",
+            transcript="I have a dentist appointment next Tuesday at 2 pm.",
+            entities={
+                "appointments": [
+                    {
+                        "title": "Appointment",
+                        "doctor": None,
+                        "datetime": None,
+                    }
+                ]
+            },
+        )
+    )
+
+    rows = s.list_memories(PID, sort="recorded_at_desc", limit=1)
+    assert rows and rows[0].note_id == eid
+    assert rows[0].fact == "I have a dentist appointment next Tuesday at 2 pm."
+
+
 # -- verification -------------------------------------------------------------
 
 

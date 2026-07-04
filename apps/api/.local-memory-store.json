@@ -1,0 +1,351 @@
+{
+  "p_001": {
+    "evt_wallet": {
+      "patient_id": "p_001",
+      "event_id": "evt_wallet",
+      "source": "voice_note",
+      "recorded_at": "2026-07-01T08:15:00Z",
+      "transcript": "I kept my wallet near the TV.",
+      "event_type": "object_location",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [
+          {
+            "name": "wallet",
+            "location": "near the TV"
+          }
+        ],
+        "appointments": [],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_ravi": {
+      "patient_id": "p_001",
+      "event_id": "evt_ravi",
+      "source": "voice_note",
+      "recorded_at": "2026-06-28T17:00:00Z",
+      "transcript": "My son Ravi came to visit me. He visits every Sunday.",
+      "event_type": "person_mention",
+      "entities": {
+        "medications": [],
+        "people": [
+          {
+            "name": "Ravi",
+            "relationship": "son"
+          }
+        ],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": "Sunday"
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_bluepill_1": {
+      "patient_id": "p_001",
+      "event_id": "evt_bluepill_1",
+      "source": "voice_note",
+      "recorded_at": "2026-07-01T08:30:00Z",
+      "transcript": "I took my blue pill after breakfast.",
+      "event_type": "medication_intake",
+      "entities": {
+        "medications": [
+          {
+            "name": "blue pill",
+            "form": "tablet"
+          }
+        ],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_confused_1": {
+      "patient_id": "p_001",
+      "event_id": "evt_confused_1",
+      "source": "caregiver_note",
+      "recorded_at": "2026-06-29T20:30:00Z",
+      "transcript": "I felt confused after dinner.",
+      "event_type": "observation",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_confused_2": {
+      "patient_id": "p_001",
+      "event_id": "evt_confused_2",
+      "source": "caregiver_note",
+      "recorded_at": "2026-06-30T20:30:00Z",
+      "transcript": "I felt confused after dinner.",
+      "event_type": "observation",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_confused_3": {
+      "patient_id": "p_001",
+      "event_id": "evt_confused_3",
+      "source": "caregiver_note",
+      "recorded_at": "2026-07-01T20:30:00Z",
+      "transcript": "I felt confused after dinner.",
+      "event_type": "observation",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_appt": {
+      "patient_id": "p_001",
+      "event_id": "evt_appt",
+      "source": "caregiver_note",
+      "recorded_at": "2026-07-01T09:00:00Z",
+      "transcript": "I have a cardiology check-up with Dr. Mehta on Friday.",
+      "event_type": "appointment",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [
+          {
+            "title": "cardiology check-up",
+            "datetime": "2026-07-05T10:00:00Z",
+            "doctor": "Dr. Mehta"
+          }
+        ],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_routine": {
+      "patient_id": "p_001",
+      "event_id": "evt_routine",
+      "source": "voice_note",
+      "recorded_at": "2026-07-01T07:45:00Z",
+      "transcript": "I water the plants every morning.",
+      "event_type": "routine",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [
+          {
+            "name": "plants",
+            "location": null
+          }
+        ],
+        "appointments": [],
+        "time_reference": "every morning"
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_391561678d74": {
+      "patient_id": "p_001",
+      "event_id": "evt_391561678d74",
+      "source": "voice_note",
+      "recorded_at": "2026-07-04T09:19:20.106Z",
+      "transcript": "my mom said I came to visit me today   and   yeah we ate pizza   and watch the movie   I'm going to sleep now it's 11:00",
+      "event_type": "appointment",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [
+          {
+            "title": "Appointment",
+            "datetime": null,
+            "doctor": null
+          }
+        ],
+        "time_reference": "today"
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_6267ec5d9db0": {
+      "patient_id": "p_001",
+      "event_id": "evt_6267ec5d9db0",
+      "source": "voice_note",
+      "recorded_at": "2026-07-04T09:22:30Z",
+      "transcript": "I have a dentist appointment next Tuesday at 2 pm.",
+      "event_type": "appointment",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [
+          {
+            "title": "Appointment",
+            "datetime": null,
+            "doctor": null
+          }
+        ],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_9f881ddffade": {
+      "patient_id": "p_001",
+      "event_id": "evt_9f881ddffade",
+      "source": "voice_note",
+      "recorded_at": "2026-07-04T09:24:42.412Z",
+      "transcript": "I'm going to my friend's place we're going for a walk and then probably to   the grocery store",
+      "event_type": "general",
+      "entities": {
+        "medications": [],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_c1a05ab9bbd9": {
+      "patient_id": "p_001",
+      "event_id": "evt_c1a05ab9bbd9",
+      "source": "voice_note",
+      "recorded_at": "2026-07-04T09:00:00Z",
+      "transcript": "My son Ravi came to visit me.",
+      "event_type": "person_mention",
+      "entities": {
+        "medications": [],
+        "people": [
+          {
+            "name": "Ravi",
+            "relationship": "son"
+          }
+        ],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": null
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_d45417363d61": {
+      "patient_id": "p_001",
+      "event_id": "evt_d45417363d61",
+      "source": "voice_note",
+      "recorded_at": "2026-07-04T08:15:00Z",
+      "transcript": "My mom came to visit me today and we watched a movie.",
+      "event_type": "person_mention",
+      "entities": {
+        "medications": [],
+        "people": [
+          {
+            "name": "Mom",
+            "relationship": "mother"
+          }
+        ],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": "today"
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    },
+    "evt_31c223107a69": {
+      "patient_id": "p_001",
+      "event_id": "evt_31c223107a69",
+      "source": "voice_note",
+      "recorded_at": "2026-07-04T08:30:00Z",
+      "transcript": "I took my blue pill after breakfast today.",
+      "event_type": "medication_intake",
+      "entities": {
+        "medications": [
+          {
+            "name": "blue pill",
+            "form": "tablet"
+          }
+        ],
+        "people": [],
+        "places": [],
+        "objects": [],
+        "appointments": [],
+        "time_reference": "today"
+      },
+      "verification": {
+        "status": "unverified",
+        "by": null,
+        "at": null
+      }
+    }
+  }
+}

@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     COGNEE_LLM_MODEL: str = "gpt-4o-mini"  # LLM cognee uses to extract (Slice 7+)
     COGNEE_LLM_API_KEY: str = ""           # LLM provider key           (Slice 7+)
 
+    # Optional query-answer synthesis via Groq for longer / multi-hop questions.
+    # Safe by default: disabled unless explicitly enabled + key provided.
+    MEMORY_USE_GROQ_SYNTHESIS: bool = False
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
+
+    # Optional on-disk persistence for the local in-memory backend. When set,
+    # LocalStore snapshots events to this JSON file so data survives API reloads.
+    MEMORY_LOCAL_PERSIST_PATH: str = ""
+
     model_config = SettingsConfigDict(env_file="apps/api/.env", extra="ignore")
 
     @property

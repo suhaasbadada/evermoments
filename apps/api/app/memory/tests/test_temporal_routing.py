@@ -148,3 +148,40 @@ def test_query_memory_factual_still_semantic():
     ans = engine.query_memory(PATIENT, "where is my wallet", store=store, now=NOW)
     assert any(r.note_id == "evt_wallet" for r in ans.results)
     assert "wallet" in ans.answer.lower()
+
+
+def test_medication_route_matches_plural_medicines_query():
+    store = LocalStore()
+    store.add_event(MemoryEvent(
+        patient_id=PATIENT,
+        event_id="evt_tabs_6pm",
+        source="voice_note",
+        recorded_at="2026-07-04T18:00:00Z",
+        event_type="medication_intake",
+        transcript="I took my tablets at 6pm.",
+        entities={"medications": [{"name": "tablets", "form": "tablet"}]},
+    ))
+
+    ans = engine.query_memory(PATIENT, "when did i take medicines", store=store, now=NOW)
+
+    assert ans.results, "medication route should return the medication memory"
+    assert ans.results[0].note_id == "evt_tabs_6pm"
+    assert ans.results[0].node_type == "MedicationIntake"
+    assert "6pm" in ans.answer.lower() or "took" in ans.answer.lower()
+
+
+def test_medication_route_matches_plural_tablets_query():
+    store = LocalStore()
+    store.add_event(MemoryEvent(
+        patient_id=PATIENT,
+        event_id="evt_tabs_6pm",
+        source="voice_note",
+        recorded_at="2026-07-04T18:00:00Z",
+        event_type="medication_intake",
+        transcript="I took my tablets at 6pm.",
+        entities={"medications": [{"name": "tablets", "form": "tablet"}]},
+    ))
+
+    ans = engine.query_memory(PATIENT, "when did i take tablets", store=store, now=NOW)
+
+    assert ans.results and ans.results[0].note_id == "evt_tabs_6pm"

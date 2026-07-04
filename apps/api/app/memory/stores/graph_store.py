@@ -45,6 +45,7 @@ from app.memory.store import MemoryStore
 # byte-for-byte identical across backends. Importing them does not touch LocalStore's
 # behaviour (guardrail: other backends untouched).
 from app.memory.stores.local_store import (
+    PEOPLE_BOOST,
     STOPWORDS,
     _NODE_TYPE,
     _event_tokens,
@@ -52,6 +53,7 @@ from app.memory.stores.local_store import (
     _norm,
     _norm_text,
     _parse_ts,
+    _person_tokens,
     _tokenize,
     filter_sort_limit,
 )
@@ -68,7 +70,19 @@ _MODE = (settings.COGNEE_MODE or "local").strip().lower()
 _CLOUD = _MODE == "cloud" and bool(settings.COGNEE_CLOUD_URL) and bool(settings.COGNEE_API_KEY)
 
 # litellm reads OPENAI_API_KEY — OpenAI is the LLM egress in BOTH modes.
-_llm_key = settings.COGNEE_LLM_API_KEY or os.environ.get("COGNEE_LLM_API_KEY", "")
+def _resolve_llm_key() -> str:
+    """Resolve the LLM key for cognee config.
+
+    Priority: explicit COGNEE_LLM_API_KEY, then OPENAI_API_KEY for convenience.
+    """
+    return (
+        settings.COGNEE_LLM_API_KEY
+        or os.environ.get("COGNEE_LLM_API_KEY", "")
+        or os.environ.get("OPENAI_API_KEY", "")
+    )
+
+
+_llm_key = _resolve_llm_key()
 if _llm_key:
     os.environ.setdefault("OPENAI_API_KEY", _llm_key)
 if not _CLOUD:
@@ -95,7 +109,7 @@ def _init_cognee_once() -> None:
     with _config_lock:
         if _configured:
             return
-        key = settings.COGNEE_LLM_API_KEY or os.environ.get("COGNEE_LLM_API_KEY", "")
+        key = _resolve_llm_key()
         model = settings.COGNEE_LLM_MODEL or os.environ.get("COGNEE_LLM_MODEL", "gpt-4o-mini")
         try:
             if key:
@@ -316,6 +330,13 @@ class CogneeGraphStore(MemoryStore):
         # patients with un-cognified adds (lazy, batched cognify on read)
         self._dirty: set[str] = set()
         self._lock = threading.RLock()
+        self._cognee_ready = bool(_resolve_llm_key())
+
+        if not self._cognee_ready:
+            logger.warning(
+                "COGNEE_LLM_API_KEY/OPENAI_API_KEY not set; graph backend will store "
+                "authoritative records and use deterministic fallback recall until a key is set."
+            )
 
         # Connection mode surfaced by GET /api/memory/health. "cloud" only when actually
         # cloud-ready; a cloud request without both creds falls back to "local" (with a warning),
@@ -396,6 +417,8 @@ class CogneeGraphStore(MemoryStore):
 
     def _ensure_cognified(self, patient_id: str) -> None:
         """Batch-cognify a patient's pending adds once (temporal flag per directive)."""
+        if not self._cognee_ready:
+            return
         with self._lock:
             if patient_id not in self._dirty:
                 return
@@ -411,7 +434,6 @@ class CogneeGraphStore(MemoryStore):
     # -- MemoryStore interface ------------------------------------------------
 
     def add_event(self, event: MemoryEvent) -> str:
-        _init_cognee_once()
         eid = event.event_id or f"evt_{uuid4().hex[:12]}"
         stored = event if event.event_id else event.model_copy(update={"event_id": eid})
         body = _event_body(stored)
@@ -419,6 +441,11 @@ class CogneeGraphStore(MemoryStore):
             self._events.setdefault(event.patient_id, {})[eid] = stored
             self._ingest_texts.setdefault(event.patient_id, {})[eid] = body
             self._dirty.add(event.patient_id)
+
+        if not self._cognee_ready:
+            return eid
+
+        _init_cognee_once()
 
         ds = self._dataset(event.patient_id)
         text = f"{body} [ref:{eid}]"
@@ -437,17 +464,47 @@ class CogneeGraphStore(MemoryStore):
         composes a sourceless prose answer, so we carry it as a ``GraphAnswer`` lead row
         (no ``note_id``, ``unverified``) and attach the CHUNKS-joined events beneath it with
         their real, current provenance — verifiable exactly like the factual path."""
-        _init_cognee_once()
         with self._lock:
             events = dict(self._events.get(patient_id, {}))
         if not events:
             return []
+
+        if not self._cognee_ready:
+            return self._fallback_query(events, query_text, top_k)
+
+        _init_cognee_once()
 
         self._ensure_cognified(patient_id)
         ds = self._dataset(patient_id)
         if _is_relational(query_text):
             return self._relational_query(patient_id, query_text, top_k, ds, events)
         return self._chunks_query(patient_id, query_text, top_k, ds, events)
+
+    def _fallback_query(
+        self,
+        events: dict[str, MemoryEvent],
+        query_text: str,
+        top_k: int,
+    ) -> list[MemoryResult]:
+        """Deterministic lexical fallback used when cognee recall is unavailable."""
+        q_tokens = _tokenize(query_text) - STOPWORDS
+        if not q_tokens or not events:
+            return []
+
+        all_events = list(events.values())
+        known_people = set().union(*(_person_tokens(ev) for ev in all_events)) if all_events else set()
+        mentioned = q_tokens & known_people
+
+        scored: list[tuple[int, datetime, MemoryEvent]] = []
+        for ev in all_events:
+            score = len(q_tokens & _event_tokens(ev))
+            if mentioned & _person_tokens(ev):
+                score += PEOPLE_BOOST
+            if score > 0:
+                scored.append((score, _parse_ts(ev.recorded_at), ev))
+
+        scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+        return [self._to_result(ev) for _, _, ev in scored[:top_k]]
 
     def _relational_query(
         self,
@@ -518,7 +575,7 @@ class CogneeGraphStore(MemoryStore):
             )
         except Exception as e:
             logger.warning("cognee.search failed for %s: %s", patient_id, e)
-            return []
+            return self._fallback_query(events, query_text, top_k)
 
         texts = _extract_texts(raw)
         ordered: list[str] = []
@@ -549,6 +606,9 @@ class CogneeGraphStore(MemoryStore):
         q_tokens = _tokenize(query_text) - STOPWORDS
         if q_tokens:
             ordered = [eid for eid in ordered if q_tokens & _event_tokens(events[eid])]
+
+        if not ordered:
+            return self._fallback_query(events, query_text, top_k)
 
         return [self._to_result(events[i]) for i in ordered[:top_k]]
 

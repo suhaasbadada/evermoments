@@ -8,9 +8,13 @@ module can be built and demoed with no external dependencies or keys.
 
 import re
 import threading
+import json
+import os
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from app.core.config import settings
 from app.memory.store import MemoryStore
 from app.schemas.memory import ListFilters, MemoryEvent, MemoryResult
 
@@ -36,6 +40,22 @@ STOPWORDS = {
 
 # How strongly a person-name match in the query pulls a related note up the ranking.
 PEOPLE_BOOST = 5
+
+
+def _resolve_persist_path(configured_path: str) -> str:
+    """Resolve persistence file path deterministically across launch directories."""
+    raw = (configured_path or "").strip()
+    if not raw:
+        return ""
+
+    path = Path(raw)
+    if path.is_absolute():
+        return str(path)
+
+    # Resolve relative paths from repo root (not process CWD) so the same env value
+    # points to one file whether API is launched from monorepo root or apps/api.
+    repo_root = Path(__file__).resolve().parents[5]
+    return str((repo_root / path).resolve())
 
 
 def _norm(value: str) -> str:
@@ -66,7 +86,16 @@ def _fact_for(event: MemoryEvent) -> str:
         return f"{o.name} is {o.location}" if o.location else o.name
     if et == "medication_intake" and e.medications:
         m = e.medications[0]
-        return f"took {m.name} ({m.form})" if m.form else f"took {m.name}"
+        medication_summary = f"took {m.name} ({m.form})" if m.form else f"took {m.name}"
+        if event.transcript:
+            transcript = event.transcript.strip()
+            # Keep user wording when extraction is too generic (e.g. "medication")
+            # or when transcript carries materially more context.
+            if _norm(m.name) == "medication":
+                return transcript
+            if _norm_text(transcript) and len(_norm_text(transcript)) > len(_norm_text(medication_summary)):
+                return transcript
+        return medication_summary
     if et == "person_mention" and e.people:
         p = e.people[0]
         person_summary = f"{p.name} — {p.relationship}" if p.relationship else p.name
@@ -84,7 +113,15 @@ def _fact_for(event: MemoryEvent) -> str:
             parts.append(f"with {a.doctor}")
         if a.datetime:
             parts.append(f"at {a.datetime}")
-        return " ".join(parts)
+        appointment_summary = " ".join(part for part in parts if part)
+        if event.transcript:
+            transcript = event.transcript.strip()
+            # Keep spoken wording when extraction collapses to generic appointment labels.
+            if _norm(a.title) in {"appointment", "doctor appointment", "checkup", "check-up"}:
+                return transcript
+            if _norm_text(transcript) and len(_norm_text(transcript)) > len(_norm_text(appointment_summary)):
+                return transcript
+        return appointment_summary or (event.transcript or "appointment")
     if event.transcript:
         return event.transcript
     return et.replace("_", " ")
@@ -154,6 +191,8 @@ class LocalStore(MemoryStore):
         # patient_id -> {event_id -> MemoryEvent}, insertion-ordered
         self._events: dict[str, dict[str, MemoryEvent]] = {}
         self._lock = threading.RLock()
+        self._persist_path = _resolve_persist_path(settings.MEMORY_LOCAL_PERSIST_PATH)
+        self._load_from_disk()
 
     # -- helpers --------------------------------------------------------------
 
@@ -172,6 +211,46 @@ class LocalStore(MemoryStore):
         with self._lock:
             return list(self._events.get(patient_id, {}).values())
 
+    def _load_from_disk(self) -> None:
+        if not self._persist_path:
+            return
+        try:
+            if not os.path.exists(self._persist_path):
+                return
+            with open(self._persist_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+
+            loaded: dict[str, dict[str, MemoryEvent]] = {}
+            for patient_id, events in raw.items():
+                bucket: dict[str, MemoryEvent] = {}
+                if not isinstance(events, dict):
+                    continue
+                for event_id, payload in events.items():
+                    if not isinstance(payload, dict):
+                        continue
+                    event = MemoryEvent.model_validate(payload)
+                    bucket[event_id] = event
+                loaded[patient_id] = bucket
+            self._events = loaded
+        except Exception:
+            # Corrupt cache should not break API startup; continue with empty memory.
+            self._events = {}
+
+    def _flush_to_disk(self) -> None:
+        if not self._persist_path:
+            return
+        directory = os.path.dirname(self._persist_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
+        snapshot = {
+            patient_id: {event_id: event.model_dump(mode="json") for event_id, event in bucket.items()}
+            for patient_id, bucket in self._events.items()
+        }
+
+        with open(self._persist_path, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, ensure_ascii=True, indent=2)
+
     # -- MemoryStore interface ------------------------------------------------
 
     def add_event(self, event: MemoryEvent) -> str:
@@ -179,6 +258,7 @@ class LocalStore(MemoryStore):
         stored = event.model_copy(update={"event_id": eid})
         with self._lock:
             self._events.setdefault(event.patient_id, {})[eid] = stored
+            self._flush_to_disk()
         return eid
 
     def query(self, patient_id: str, query_text: str, top_k: int = 5) -> list[MemoryResult]:
@@ -243,6 +323,7 @@ class LocalStore(MemoryStore):
             event.verification.status = status
             event.verification.by = by
             event.verification.at = datetime.now(timezone.utc).isoformat()
+            self._flush_to_disk()
             return True
 
     def consolidate(self, patient_id: str) -> dict:
@@ -277,9 +358,11 @@ class LocalStore(MemoryStore):
                 if not bucket:
                     return False
                 self._events[patient_id] = {}
+                self._flush_to_disk()
                 return True
             if event_id in bucket:
                 del bucket[event_id]
+                self._flush_to_disk()
                 return True
             return False
 

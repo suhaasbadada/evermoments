@@ -1,5 +1,7 @@
 """Tests for the memory engine (Slice 5), using an injected LocalStore."""
 
+from datetime import datetime, timezone
+
 import pytest
 
 from app.memory import engine
@@ -96,6 +98,82 @@ def test_query_reflects_confirmed_status(store: LocalStore):
     assert answer.results[0].verification_status == "confirmed"
     assert "confirmed" in answer.answer.lower()
     assert "nurse_amy" in answer.answer
+
+
+def test_query_kinship_answer_is_relation_specific(store: LocalStore):
+    engine.ingest_memory_event(
+        MemoryEvent(
+            patient_id=PATIENT_ID,
+            recorded_at="2026-07-04T09:00:00Z",
+            event_type="person_mention",
+            transcript="My son Ravi came to visit me. He visits every Sunday.",
+            entities={"people": [{"name": "Ravi", "relationship": "son"}]},
+        ),
+        store=store,
+    )
+
+    answer = engine.query_memory(PATIENT_ID, "Who is my son?", store=store)
+    assert answer.results
+    assert answer.answer.lower().startswith("ravi is your son")
+
+
+def test_query_medication_today_ignores_unrelated_today_notes(store: LocalStore):
+    engine.ingest_memory_event(
+        MemoryEvent(
+            patient_id=PATIENT_ID,
+            recorded_at="2026-07-04T08:15:00Z",
+            event_type="person_mention",
+            transcript="My mom came to visit me today and we watched a movie.",
+            entities={"people": [{"name": "Mom", "relationship": "mother"}], "time_reference": "today"},
+        ),
+        store=store,
+    )
+    engine.ingest_memory_event(
+        MemoryEvent(
+            patient_id=PATIENT_ID,
+            recorded_at="2026-07-04T08:30:00Z",
+            event_type="medication_intake",
+            transcript="I took my blue pill after breakfast today.",
+            entities={
+                "medications": [{"name": "blue pill", "form": "tablet"}],
+                "time_reference": "today",
+            },
+        ),
+        store=store,
+    )
+
+    answer = engine.query_memory(
+        PATIENT_ID,
+        "Did I take my medicine today?",
+        store=store,
+        now=datetime(2026, 7, 4, 12, 0, 0, tzinfo=timezone.utc),
+    )
+    assert answer.results
+    assert all(row.node_type == "MedicationIntake" for row in answer.results)
+    assert "blue pill" in answer.results[0].fact.lower()
+
+
+def test_query_uses_llm_synthesis_when_available(store: LocalStore, monkeypatch):
+    engine.ingest_memory_event(
+        MemoryEvent(
+            patient_id=PATIENT_ID,
+            recorded_at="2026-07-04T09:00:00Z",
+            event_type="person_mention",
+            transcript="My son Ravi came to visit me.",
+            entities={"people": [{"name": "Ravi", "relationship": "son"}]},
+        ),
+        store=store,
+    )
+
+    monkeypatch.setattr(
+        engine,
+        "_maybe_llm_answer",
+        lambda query, rows: "LLM: Ravi is your son and visits often." if rows else None,
+    )
+
+    answer = engine.query_memory(PATIENT_ID, "Tell me about Ravi", store=store)
+    assert answer.results
+    assert answer.answer == "LLM: Ravi is your son and visits often."
 
 
 # -- verify / consolidate / forget / graph ------------------------------------

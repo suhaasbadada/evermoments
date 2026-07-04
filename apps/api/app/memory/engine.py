@@ -14,6 +14,7 @@ from uuid import uuid4
 from app.memory.contradiction import check_double_dose
 from app.memory.store import MemoryStore
 from app.memory.store import store as current_store
+from app.services.llm_answer import synthesize_answer_with_groq
 from app.schemas.memory import (
     ListFilters,
     MemoryAnswer,
@@ -50,6 +51,36 @@ _ENUM_RE = re.compile(
     """
 )
 _ISO_DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
+_VISITOR_RE = re.compile(r"\b(who\s+visited|visitor|came\s+over)\b", re.I)
+_ACTIVITY_RE = re.compile(r"\bwhat\s+(did|have)\s+i\s+(do|done)\b", re.I)
+_EATING_RE = re.compile(r"\b(eat|eating|ate|dinner|lunch|breakfast|meal|pizza|food)\b", re.I)
+_FOOD_HINT_RE = re.compile(
+    r"\b(pizza|food|meal|dinner|lunch|breakfast|snack|eat|ate|drank|drink|restaurant|cafe)\b",
+    re.I,
+)
+_MEDICATION_QUERY_RE = re.compile(
+    r"\b(medications?|medicines?|meds?|pills?|tablets?|capsules?|doses?)\b", re.I
+)
+_MEDICATION_ACTION_RE = re.compile(
+    r"\b(take|took|taken|taking|did\s+i\s+take|have\s+i\s+taken|have\s+i\s+had)\b",
+    re.I,
+)
+_KINSHIP_RELATIONS = (
+    "son",
+    "daughter",
+    "mother",
+    "father",
+    "mom",
+    "dad",
+    "brother",
+    "sister",
+    "husband",
+    "wife",
+)
+_KINSHIP_Q_RE = re.compile(
+    r"\bwho\s+is\s+my\s+(son|daughter|mother|father|mom|dad|brother|sister|husband|wife)\b",
+    re.I,
+)
 
 
 def _day_bounds(day: datetime) -> tuple[str, str]:
@@ -117,6 +148,113 @@ def _temporal_answer_text(label: str, rows: list[MemoryResult]) -> str:
     return f"Here's what you recorded {label}: {facts}."
 
 
+def _intent_fallback_rows(
+    patient_id: str,
+    query: str,
+    top_k: int,
+    s: MemoryStore,
+) -> list[MemoryResult]:
+    """Deterministic fallback for broad natural-language prompts when token recall is empty."""
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+
+    if _VISITOR_RE.search(q):
+        return s.list_memories(
+            patient_id,
+            ListFilters(event_type="person_mention"),
+            sort="recorded_at_desc",
+            limit=top_k,
+        )
+
+    if _KINSHIP_Q_RE.search(q):
+        return s.list_memories(
+            patient_id,
+            ListFilters(event_type="person_mention"),
+            sort="recorded_at_desc",
+            limit=top_k,
+        )
+
+    if _EATING_RE.search(q):
+        recent = s.list_memories(patient_id, sort="recorded_at_desc", limit=50)
+        hinted = [row for row in recent if _FOOD_HINT_RE.search(row.fact)]
+        return hinted[:top_k]
+
+    if _ACTIVITY_RE.search(q):
+        return s.list_memories(patient_id, sort="recorded_at_desc", limit=top_k)
+
+    return []
+
+
+def _medication_check_route(
+    patient_id: str,
+    query: str,
+    top_k: int,
+    s: MemoryStore,
+    now: datetime,
+) -> tuple[list[MemoryResult], str | None] | None:
+    """Route medication check questions to event_type-filtered list lookups.
+
+    This avoids lexical false positives where a temporal term like "today" matches
+    unrelated notes better than actual medication memories.
+    """
+    q = (query or "").strip()
+    if not q:
+        return None
+    if not _MEDICATION_QUERY_RE.search(q):
+        return None
+    if not (_MEDICATION_ACTION_RE.search(q) or "did i" in q.lower()):
+        return None
+
+    filters = ListFilters(event_type="medication_intake")
+    label: str | None = None
+    ql = q.lower()
+
+    iso = _ISO_DATE_RE.findall(q)
+    if len(iso) >= 1:
+        lo, hi = _day_bounds(_iso_to_utc(iso[0]))
+        filters.date_from = lo
+        filters.date_to = hi
+        label = f"on {iso[0]}"
+    elif "yesterday" in ql:
+        lo, hi = _day_bounds(now - timedelta(days=1))
+        filters.date_from = lo
+        filters.date_to = hi
+        label = "yesterday"
+    elif "today" in ql:
+        lo, hi = _day_bounds(now)
+        filters.date_from = lo
+        filters.date_to = hi
+        label = "today"
+
+    rows = s.list_memories(patient_id, filters, sort="recorded_at_desc", limit=top_k)
+    return rows, label
+
+
+def _medication_check_answer(rows: list[MemoryResult], label: str | None) -> str:
+    if not rows:
+        window = f" {label}" if label else ""
+        return (
+            f"I don't have a memory of taking medicine{window} yet. "
+            "If this seems wrong, please record it again or ask a caregiver to verify."
+        )
+
+    top = rows[0]
+    lead = top.fact.strip()
+    if lead:
+        lead = lead[0].upper() + lead[1:]
+        if not lead.endswith((".", "!", "?")):
+            lead += "."
+
+    scope = f" {label}" if label else ""
+    clause = _status_clause(top.verification_status, top.verified_by)
+    extra = ""
+    others = len(rows) - 1
+    if others > 0:
+        extra = f" I also found {others} other related note{'s' if others > 1 else ''}."
+    return f"Based on your notes{scope}, yes: {lead} {clause}{extra}".strip()
+
+
 def _new_event_id() -> str:
     return f"evt_{uuid4().hex[:12]}"
 
@@ -160,6 +298,61 @@ def _answer_text(rows: list[MemoryResult]) -> str:
     return f"{lead} {clause}{extra}".strip()
 
 
+def _kinship_answer(query: str, rows: list[MemoryResult]) -> str | None:
+    """Return a relation-specific answer for questions like "Who is my son?"."""
+    if not rows:
+        return None
+
+    match = _KINSHIP_Q_RE.search((query or "").strip())
+    if not match:
+        return None
+
+    relation = match.group(1).lower()
+    relation_word = relation
+    if relation == "mom":
+        relation_word = "mother"
+    elif relation == "dad":
+        relation_word = "father"
+
+    # Prefer names explicitly tied to the asked relation in recalled facts.
+    for row in rows:
+        fact = (row.fact or "").strip()
+        if not fact:
+            continue
+
+        # Match variants like:
+        # "My son Ravi came to visit" or "Ravi - son" / "Ravi — son".
+        patterns = [
+            re.compile(
+                rf"\bmy\s+{re.escape(relation)}\s+([A-Za-z][A-Za-z'\-]*)\b",
+                re.I,
+            ),
+            re.compile(
+                rf"\b([A-Za-z][A-Za-z'\-]*)\s*[\-\u2014]\s*{re.escape(relation)}\b",
+                re.I,
+            ),
+        ]
+
+        for pattern in patterns:
+            name_match = pattern.search(fact)
+            if not name_match:
+                continue
+            name = name_match.group(1).strip(" .,!?:;")
+            if not name:
+                continue
+
+            name = " ".join(part.capitalize() for part in name.split())
+            clause = _status_clause(row.verification_status, row.verified_by)
+            return f"{name} is your {relation_word}. {clause}"
+
+    return None
+
+
+def _maybe_llm_answer(query: str, rows: list[MemoryResult]) -> str | None:
+    """Best-effort Groq synthesis; deterministic answer remains the fallback."""
+    return synthesize_answer_with_groq(query, rows)
+
+
 def ingest_memory_event(event: MemoryEvent, store: MemoryStore | None = None) -> dict:
     """Persist an event and run the double-dose safety check. Returns {event_id, status, warning}."""
     s = store or current_store()
@@ -188,7 +381,9 @@ def query_memory(
     way, so clients need no changes."""
     s = store or current_store()
 
-    route = _temporal_filters(query, now or datetime.now(timezone.utc))
+    current_now = now or datetime.now(timezone.utc)
+
+    route = _temporal_filters(query, current_now)
     if route is not None:
         filters, label = route
         rows = s.list_memories(patient_id, filters, sort="recorded_at_asc")
@@ -199,7 +394,35 @@ def query_memory(
             warnings=[],
         )
 
+    medication_route = _medication_check_route(patient_id, query, top_k, s, current_now)
+    if medication_route is not None:
+        rows, label = medication_route
+        return MemoryAnswer(
+            query=query,
+            answer=_medication_check_answer(rows, label),
+            results=rows,
+            warnings=[],
+        )
+
     rows = s.query(patient_id, query, top_k)
+    if not rows:
+        rows = _intent_fallback_rows(patient_id, query, top_k, s)
+    kinship = _kinship_answer(query, rows)
+    if kinship is not None:
+        return MemoryAnswer(
+            query=query,
+            answer=kinship,
+            results=rows,
+            warnings=[],
+        )
+    llm_answer = _maybe_llm_answer(query, rows)
+    if llm_answer is not None:
+        return MemoryAnswer(
+            query=query,
+            answer=llm_answer,
+            results=rows,
+            warnings=[],
+        )
     return MemoryAnswer(
         query=query,
         answer=_answer_text(rows),
