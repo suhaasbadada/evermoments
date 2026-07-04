@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { listMemories, seedPatient } from "@/lib/memoryClient";
 import type { MemoryResult } from "@/lib/memoryClient";
 import { VerificationBadge } from "@/components/VerificationBadge";
+import { MobileNav } from "@/components/mobile-nav";
 
 const PATIENT_ID = "p_001";
 
@@ -53,7 +54,9 @@ export default function MemoriesPage() {
   }, []);
 
   useEffect(() => {
-    void loadMemories(true);
+    const initialLoad = window.setTimeout(() => {
+      void loadMemories(true);
+    }, 0);
 
     const handlePageShow = () => {
       void loadMemories(false);
@@ -69,64 +72,66 @@ export default function MemoriesPage() {
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
+      window.clearTimeout(initialLoad);
       window.removeEventListener("pageshow", handlePageShow);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [loadMemories]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 flex flex-col px-6 py-10 gap-6 max-w-xl mx-auto">
+    <main className="min-h-screen">
+      <div className="app-shell app-shell--nav flex min-h-screen flex-col gap-4">
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-2 text-stone-500 hover:text-stone-700 text-lg self-start transition-colors"
+        className="flex items-center gap-1.5 text-sm text-teal-900/70 transition-colors hover:text-teal-900"
       >
-        <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         Back
       </button>
 
-      <h1 className="text-4xl font-bold text-stone-800">Today&apos;s Memories</h1>
+      <h1 className="text-3xl font-semibold text-emerald-950">Today&apos;s Memories</h1>
 
       {loading && (
-        <div className="flex flex-col items-center gap-4 py-10">
+        <div className="flex flex-col items-center gap-3 py-8">
           <Loader2
-            className="h-14 w-14 text-teal-500 animate-spin"
+            className="h-10 w-10 text-emerald-600 animate-spin"
             aria-hidden="true"
           />
-          <p className="text-xl text-stone-500">Loading your memories…</p>
+          <p className="text-sm text-teal-900/60">Loading your memories…</p>
         </div>
       )}
 
       {error && (
         <div
           role="alert"
-          className="rounded-2xl bg-red-50 border border-red-200 p-5 shadow-sm"
+          className="app-card border-rose-200 bg-rose-50 p-4"
         >
-          <p className="text-lg text-red-700">{error}</p>
+          <p className="text-sm text-rose-700">{error}</p>
         </div>
       )}
 
       {!loading && !error && memories.length === 0 && (
-        <div className="rounded-3xl bg-white border border-stone-100 p-8 text-center shadow-sm">
-          <p className="text-5xl mb-3" aria-hidden="true">🌱</p>
-          <p className="text-2xl text-stone-700">No memories yet.</p>
-          <p className="text-lg text-stone-400 mt-2">
+        <div className="app-card p-6 text-center">
+          <p className="text-4xl mb-2" aria-hidden="true">🌱</p>
+          <p className="text-lg text-emerald-950">No memories yet.</p>
+          <p className="text-sm text-teal-900/55 mt-1.5">
             Record your first memory to get started!
           </p>
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2.5">
         {memories.map((m, i) => (
           <div
             key={i}
-            className="rounded-2xl bg-white border border-stone-100 shadow-sm hover:shadow-md transition-shadow p-5"
+            className="app-card p-4"
           >
-            <p className="text-lg text-stone-800 leading-relaxed">{m.fact}</p>
+            <p className="text-sm text-teal-950 leading-relaxed">{m.fact}</p>
             <div className="flex flex-wrap items-center gap-2 mt-3">
-              <span className="text-sm text-stone-400">
+              <span className="text-xs text-teal-900/55">
                 {formatDate(m.recorded_at)}
               </span>
-              <span className="text-stone-300" aria-hidden="true">·</span>
+              <span className="text-teal-900/35" aria-hidden="true">·</span>
               <VerificationBadge
                 status={m.verification_status}
                 by={m.verified_by}
@@ -135,6 +140,8 @@ export default function MemoriesPage() {
           </div>
         ))}
       </div>
+      </div>
+      <MobileNav />
     </main>
   );
 }

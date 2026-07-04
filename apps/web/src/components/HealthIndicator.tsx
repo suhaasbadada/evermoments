@@ -37,7 +37,7 @@ export function HealthIndicator() {
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-xs text-slate-600 shadow backdrop-blur"
+      className="flex items-center gap-1.5 rounded-full border border-teal-900/10 bg-white/80 px-2 py-1 text-[11px] text-teal-900/70 shadow-sm backdrop-blur"
       title={label}
       aria-label={label}
     >

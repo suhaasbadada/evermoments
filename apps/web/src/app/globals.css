@@ -12,15 +12,14 @@
 }
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --bg: #f5f8f6;
+  --bg-soft: #eef4f1;
+  --ink: #13211d;
+  --muted: #5f706a;
+  --brand: #0f766e;
+  --brand-strong: #0b5f58;
+  --card: rgba(255, 255, 255, 0.76);
+  --card-border: rgba(19, 33, 29, 0.09);
 }
 
 html {
@@ -33,11 +32,74 @@ html {
 
 body {
   min-height: 100%;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans, ui-sans-serif, system-ui, sans-serif);
+  color: var(--ink);
+  font-family: var(--font-body, ui-sans-serif, system-ui, sans-serif);
+  background:
+    radial-gradient(circle at 9% 12%, rgba(15, 118, 110, 0.2), transparent 34%),
+    radial-gradient(circle at 87% 90%, rgba(13, 148, 136, 0.14), transparent 29%),
+    linear-gradient(140deg, var(--bg), var(--bg-soft));
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display, ui-sans-serif, system-ui, sans-serif);
+  letter-spacing: -0.02em;
+}
+
+.app-shell {
+  width: min(100%, 28rem);
+  margin-inline: auto;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1.25rem, env(safe-area-inset-bottom));
+}
+
+.app-shell--nav {
+  padding-bottom: max(6.5rem, calc(env(safe-area-inset-bottom) + 5.4rem));
+}
+
+.app-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 1.1rem;
+  box-shadow: 0 10px 35px rgba(8, 39, 35, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.app-button {
+  border-radius: 0.95rem;
+  font-weight: 600;
+  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.app-button:active {
+  transform: translateY(1px) scale(0.995);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-up {
+  animation: fadeUp 360ms ease both;
+}
+
+.fade-up-delay-1 {
+  animation-delay: 70ms;
+}
+
+.fade-up-delay-2 {
+  animation-delay: 140ms;
 }
 
 img,
