@@ -158,6 +158,44 @@ def test_chunks_recall_joins_provenance(graph_store):
     assert "ravi" in ravi.fact.lower()
 
 
+def test_relational_query_traverses_graph(graph_store, monkeypatch):
+    """A relational question routes to SearchType.GRAPH_COMPLETION (graph traversal), not
+    CHUNKS embeddings, and returns a composed GraphAnswer lead + REAL provenance beneath.
+    A factual question stays on CHUNKS. Read-only (uses Ravi/wallet; forgets nothing)."""
+    from cognee.modules.search.types import SearchType
+
+    from app.memory.stores import graph_store as gs
+
+    seen: list = []
+    orig_search = gs.cognee.search
+
+    def _spy(*args, **kwargs):
+        seen.append(kwargs.get("query_type"))
+        return orig_search(*args, **kwargs)
+
+    monkeypatch.setattr(gs.cognee, "search", _spy)
+
+    # Relational -> the graph is actually traversed, and a composed answer leads.
+    seen.clear()
+    rel = graph_store.query(PATIENT, "who is Ravi", top_k=5)
+    assert SearchType.GRAPH_COMPLETION in seen, "relational query did NOT traverse the graph"
+    assert rel and rel[0].node_type == "GraphAnswer", "expected a composed GraphAnswer lead row"
+    assert rel[0].note_id == "" and rel[0].verification_status == "unverified"
+    assert "ravi" in rel[0].fact.lower()
+    # Supporting rows keep real, verifiable provenance from the CHUNKS join.
+    assert any(r.note_id == RAVI_ID and r.source == "voice_note" for r in rel[1:]), (
+        "relational answer must attach the CHUNKS-joined source events beneath the lead"
+    )
+
+    # Factual -> CHUNKS only, NO graph traversal, provenance preserved, no synthetic row.
+    seen.clear()
+    fac = graph_store.query(PATIENT, "where is my wallet", top_k=5)
+    assert SearchType.GRAPH_COMPLETION not in seen, "factual query must NOT traverse the graph"
+    assert SearchType.CHUNKS in seen
+    assert any(r.note_id == WALLET_ID for r in fac), "factual recall lost the wallet provenance"
+    assert all(r.node_type != "GraphAnswer" for r in fac), "factual path must not inject a lead"
+
+
 def test_verification_reflected_in_recall(graph_store):
     """Verifying an event is reflected in the next recall (join reads the CURRENT record)."""
     assert graph_store.set_verification(PATIENT, WALLET_ID, "confirmed", "nurse_amy") is True
