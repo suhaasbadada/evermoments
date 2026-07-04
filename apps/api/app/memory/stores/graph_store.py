@@ -12,11 +12,17 @@ deterministic (guardrail #5). So this backend is a hybrid:
 * An in-memory **authoritative event record** (same shape as ``LocalStore``) is the
   source of truth for provenance, verification, double-dose, consolidation, graph
   export, and single-item forget.
-* **cognee powers semantic recall in ``query()``** — the "recall via Cognee" loop.
-  We ingest each event's text tagged with a ``[ref:<event_id>]`` sentinel, retrieve
-  with ``SearchType.CHUNKS`` (embedding similarity, no LLM), parse the sentinel out
-  of the returned chunks, and join back to the authoritative record for full,
-  current provenance.
+* **cognee powers semantic recall in ``query()``** — the "recall via Cognee" loop, now
+  HYBRID (Fix 1). We ingest each event's text tagged with a ``[ref:<event_id>]`` sentinel.
+  * FACTUAL lookups ("where is my wallet") retrieve with ``SearchType.CHUNKS`` (embedding
+    similarity), parse the sentinel out of the chunks, and join back to the authoritative
+    record for full, current provenance.
+  * RELATIONAL/connective questions ("who is Ravi", "what relates to the confusion")
+    TRAVERSE the graph with ``SearchType.GRAPH_COMPLETION`` — which composes an answer over
+    the graph the temporal cognify built. That answer is sourceless prose, so it rides as a
+    ``GraphAnswer`` lead row (empty ``note_id``, ``unverified``) with the CHUNKS-joined events
+    attached beneath it, keeping supporting provenance verifiable. Routing (``_is_relational``)
+    is pure/deterministic; the factual path is unchanged.
 
 ``cognee`` is imported ONLY in this module (guardrail #1). Its heavy import is paid
 only when ``MEMORY_BACKEND=graph`` selects this backend (lazy import in
@@ -201,6 +207,102 @@ def _extract_texts(raw) -> list[str]:
     return texts
 
 
+# --- Hybrid query routing (Fix 1) -------------------------------------------
+# Relational/connective questions ("who is Ravi", "how are Ravi and the confusion related",
+# "why did I feel confused") are answered by TRAVERSING the knowledge graph via
+# SearchType.GRAPH_COMPLETION, which composes an answer over the graph. Factual lookups
+# ("where is my wallet", "when is my appointment") stay on CHUNKS + the [ref:] provenance
+# join, because GRAPH_COMPLETION returns sourceless prose (no source/verification/note_id).
+#
+# The default is FACTUAL — the provenance-preserving path — so only confident relational
+# signals route to the graph. A leading factual wh-word (where/when/how many/how much/what
+# time) overrides a relational token, since those questions need the exact, source-backed
+# answer the provenance join gives. _is_relational is PURE (no cognee) so Tier 1 unit-tests
+# the routing offline with zero network.
+_RELATIONAL_RE = re.compile(
+    r"""(?xi)
+      \bwho\b                                 # who is / who are / who visited ...
+    | \bwhose\b
+    | \brelat(?:e|es|ed|ing|ion|ionship)\b    # relate / related / relationship
+    | \bconnect(?:ed|ion|ions|s)?\b           # connect / connected / connection
+    | \blinked?\b                             # link / linked
+    | \bassociat(?:e|ed|ion)\b                # associate / associated
+    | \bwhy\b                                  # why did I ...  (causal / connective)
+    | \bhow\ (?:is|are|was|were|do|does|did)\b .* \b(?:relat|connect|know|link|associat)
+    | \btell\ me\ about\b
+    | \bwhat\ relates?\b
+    | \bwhat\ (?:is|was|are|'?s)\ .*\b(?:relationship|connection|link)\b
+    """
+)
+
+# A leading factual wh-word forces the CHUNKS + provenance path even if a relational token
+# also appears (e.g. "where did Ravi put the wallet" is a location lookup, not a graph walk).
+_FACTUAL_LEAD_RE = re.compile(r"(?i)^\s*(?:where|when|what\s+time|how\s+many|how\s+much)\b")
+
+
+def _is_relational(query_text: str) -> bool:
+    """Route a question: True -> traverse the graph (GRAPH_COMPLETION); False -> CHUNKS.
+
+    Deterministic and pure so routing is testable without cognee. Factual wh-questions win
+    over a relational token, because they need the exact, source-backed provenance answer."""
+    q = (query_text or "").strip()
+    if not q:
+        return False
+    if _FACTUAL_LEAD_RE.search(q):
+        return False
+    return bool(_RELATIONAL_RE.search(q))
+
+
+def _completion_prose(raw) -> str:
+    """Extract the composed answer from a *_COMPLETION result and normalise it to one calm
+    line. GRAPH_COMPLETION can return multi-line markdown; the engine uses this as the lead
+    sentence of a patient-facing answer, so it must be a single tidy string.
+
+    Targets ONLY the answer payload: the Cognee-Cloud envelope wraps it as
+    ``[{'search_result': ['<prose>']}, ...]`` (and dict items may be ``{'text'|'value': ...}``);
+    unlike ``_extract_texts`` we do NOT sweep sibling keys like ``dataset_id`` into the text."""
+    strings: list[str] = []
+
+    def collect(o) -> None:
+        if o is None:
+            return
+        if isinstance(o, str):
+            strings.append(o)
+            return
+        if isinstance(o, dict):
+            if "search_result" in o:  # cloud envelope: descend ONLY into the payload
+                collect(o["search_result"])
+                return
+            for key in ("text", "value", "answer"):  # completion item shapes
+                v = o.get(key)
+                if isinstance(v, str):
+                    strings.append(v)
+                    return
+            return
+        if isinstance(o, (list, tuple, set)):
+            for v in o:
+                collect(v)
+            return
+        t = getattr(o, "text", None)  # SearchResultItem-like object
+        if isinstance(t, str):
+            strings.append(t)
+            return
+        sr = getattr(o, "search_result", None)
+        if sr is not None and sr is not o:
+            collect(sr)
+
+    collect(raw)
+    text = " ".join(s.strip() for s in strings if isinstance(s, str) and s.strip())
+    if not text:
+        return ""
+    # Flatten markdown emphasis/headings/bullets and any newlines into a single line.
+    text = re.sub(r"[*_#>`]+", " ", text)
+    text = re.sub(r"(?m)^\s*[-•]\s*", " ", text)
+    text = re.sub(r"\s*[\r\n]+\s*[-•]?\s*", " ", text)
+    text = re.sub(r"\s{2,}", " ", text).strip()
+    return text
+
+
 class CogneeGraphStore(MemoryStore):
     backend_name = "graph"
 
@@ -328,6 +430,13 @@ class CogneeGraphStore(MemoryStore):
         return eid
 
     def query(self, patient_id: str, query_text: str, top_k: int = 5) -> list[MemoryResult]:
+        """Hybrid recall (Fix 1). Relational/connective questions traverse the knowledge
+        graph (GRAPH_COMPLETION); factual lookups keep CHUNKS + the provenance join.
+
+        Both return the same ``MemoryResult`` contract. On the relational path the graph
+        composes a sourceless prose answer, so we carry it as a ``GraphAnswer`` lead row
+        (no ``note_id``, ``unverified``) and attach the CHUNKS-joined events beneath it with
+        their real, current provenance — verifiable exactly like the factual path."""
         _init_cognee_once()
         with self._lock:
             events = dict(self._events.get(patient_id, {}))
@@ -336,6 +445,68 @@ class CogneeGraphStore(MemoryStore):
 
         self._ensure_cognified(patient_id)
         ds = self._dataset(patient_id)
+        if _is_relational(query_text):
+            return self._relational_query(patient_id, query_text, top_k, ds, events)
+        return self._chunks_query(patient_id, query_text, top_k, ds, events)
+
+    def _relational_query(
+        self,
+        patient_id: str,
+        query_text: str,
+        top_k: int,
+        ds: str,
+        events: dict[str, MemoryEvent],
+    ) -> list[MemoryResult]:
+        """Traverse the graph for a composed answer, then attach CHUNKS provenance beneath it."""
+        prose = self._graph_completion(ds, query_text, top_k)
+        # Supporting evidence: the SAME CHUNKS + [ref:] join the factual path uses, so the
+        # events the answer draws on stay caregiver-verifiable with full, current provenance.
+        support = self._chunks_query(patient_id, query_text, top_k, ds, events)
+        if not prose:
+            # Graph answer unavailable (composition failed / empty) -> degrade to the
+            # provenance-backed factual result rather than return nothing.
+            return support
+
+        # The composed answer is genuinely sourceless: node_type marks it, note_id is empty,
+        # and it is never caregiver-confirmed. (source is a closed Literal with no "graph"
+        # value, so we borrow the strongest supporting row's source, else the common default.)
+        lead = MemoryResult(
+            fact=prose,
+            node_type="GraphAnswer",
+            recorded_at=datetime.now(timezone.utc).isoformat(),
+            source=support[0].source if support else "voice_note",
+            verification_status="unverified",
+            verified_by=None,
+            note_id="",
+        )
+        return [lead, *support[: max(top_k - 1, 0)]]
+
+    def _graph_completion(self, ds: str, query_text: str, top_k: int) -> str:
+        """Run SearchType.GRAPH_COMPLETION and return the composed answer as one calm line."""
+        try:
+            raw = _run(
+                cognee.search(
+                    query_text=query_text,
+                    query_type=SearchType.GRAPH_COMPLETION,
+                    datasets=[ds],
+                    top_k=max(top_k, 5),
+                )
+            )
+        except Exception as e:
+            logger.warning("cognee GRAPH_COMPLETION failed for %s: %s", ds, e)
+            return ""
+        return _completion_prose(raw)
+
+    def _chunks_query(
+        self,
+        patient_id: str,
+        query_text: str,
+        top_k: int,
+        ds: str,
+        events: dict[str, MemoryEvent],
+    ) -> list[MemoryResult]:
+        """Factual path: CHUNKS embedding recall joined to the authoritative record via the
+        ``[ref:<id>]`` sentinel. UNCHANGED from the original query() — full provenance."""
         try:
             raw = _run(
                 cognee.search(

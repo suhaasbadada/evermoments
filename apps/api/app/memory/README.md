@@ -27,6 +27,19 @@ store   ──►  app/memory/store.py       MemoryStore ABC + get_store() facto
 - **Double-dose detection** (`app/memory/contradiction.py`) is pure Python (timestamp
   math, no cognee) so it behaves identically on every backend.
 
+## Upstream voice ingestion
+
+The backend-owned voice pipeline lives at `POST /api/ingest/voice-note` and converts a raw
+note into the `MemoryEvent` contract used here.
+
+- **Offline/dev path:** send `transcript` directly, or a base64 `text/plain` payload for a
+  zero-network STT demo.
+- **Real STT path:** set `STT_BACKEND=openai` and `OPENAI_API_KEY`, then send binary audio as
+  base64 (`audio/wav`, `audio/mpeg`, `audio/mp4`, `audio/webm`, `audio/ogg`).
+- **Handoff:** the ingest pipeline classifies/extracts a `MemoryEvent`, then stores it through
+  `engine.ingest_memory_event()` so all provenance, verification, warning, and recall behavior
+  stay centralized in Module 3.
+
 ## Configuration
 
 Set in `apps/api/.env` (copy from `apps/api/.env.example`). All optional — the API boots
@@ -41,6 +54,11 @@ on `local` with no keys.
 | `COGNEE_API_KEY` | `""` | Cognee Cloud key — **required** for `COGNEE_MODE=cloud` |
 | `COGNEE_LLM_MODEL` | `gpt-4o-mini` | LLM cognee uses for extraction (graph backend, both modes) |
 | `COGNEE_LLM_API_KEY` | `""` | OpenAI/LLM provider key (graph backend, both modes) |
+| `STT_BACKEND` | `offline` | `offline` \| `openai` for `/api/ingest/voice-note` |
+| `STT_MODEL` | `gpt-4o-mini-transcribe` | OpenAI transcription model for binary audio |
+| `STT_TIMEOUT_SEC` | `45` | Timeout for the transcription HTTP request |
+| `OPENAI_API_KEY` | `""` | Required when `STT_BACKEND=openai` |
+| `OPENAI_TRANSCRIBE_URL` | `https://api.openai.com/v1/audio/transcriptions` | Override only if the provider URL changes |
 
 ### Graph backend: local (embedded) vs Cognee Cloud
 
