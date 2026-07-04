@@ -3,7 +3,6 @@
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Mic, Square, Check, ArrowLeft, Loader2 } from "lucide-react";
-import { mockTranscribeAndExtract } from "@/lib/mockVoiceBackend";
 import { ingestMemoryEvent } from "@/lib/memoryClient";
 import type { MemoryEvent, MemoryWarning } from "@/lib/memoryClient";
 import { SafetyBanner } from "@/components/SafetyBanner";
@@ -19,16 +18,86 @@ type Step =
 
 const PATIENT_ID = "p_001";
 
+type SpeechRecognitionAlternativeLike = {
+  transcript: string;
+};
+
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  0: SpeechRecognitionAlternativeLike;
+};
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+
+type SpeechRecognitionErrorEventLike = {
+  error: string;
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type WindowWithSpeechRecognition = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
 export default function RecordMemoryPage() {
   const router = useRouter();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const transcriptRef = useRef("");
+  const speechErrorRef = useRef<string | null>(null);
 
   const [step, setStep] = useState<Step>("idle");
   const [transcript, setTranscript] = useState("");
   const [pendingEvent, setPendingEvent] = useState<Partial<MemoryEvent> | null>(null);
   const [warning, setWarning] = useState<MemoryWarning | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+
+  const stopSpeechRecognition = useCallback(async (): Promise<void> => {
+    const recognition = speechRecognitionRef.current;
+    if (!recognition) return;
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      const timeout = window.setTimeout(finish, 800);
+
+      recognition.onend = () => {
+        window.clearTimeout(timeout);
+        finish();
+      };
+
+      try {
+        recognition.stop();
+      } catch {
+        window.clearTimeout(timeout);
+        finish();
+      }
+    });
+
+    speechRecognitionRef.current = null;
+  }, []);
 
   const startRecording = useCallback(async () => {
     // Guard: API not available (non-secure context, or old browser)
@@ -41,32 +110,109 @@ export default function RecordMemoryPage() {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      chunksRef.current = [];
+      const speechWindow = window as WindowWithSpeechRecognition;
+      const SpeechRecognitionCtor =
+        speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
 
-      mr.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+      if (!SpeechRecognitionCtor) {
+        stream.getTracks().forEach((t) => t.stop());
+        setErrorMsg(
+          "Live speech transcription is not supported in this browser. Please use Chrome or Edge."
+        );
+        setStep("error");
+        return;
+      }
+
+      transcriptRef.current = "";
+      speechErrorRef.current = null;
+
+      const recognition = new SpeechRecognitionCtor();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event) => {
+        let finalChunk = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          if (result?.isFinal && result[0]?.transcript) {
+            finalChunk += ` ${result[0].transcript}`;
+          }
+        }
+
+        if (finalChunk.trim()) {
+          transcriptRef.current = `${transcriptRef.current} ${finalChunk}`.trim();
+        }
       };
+
+      recognition.onerror = (event) => {
+        const code = event.error;
+        if (code === "not-allowed") {
+          speechErrorRef.current =
+            "Microphone access was blocked. Please allow microphone access and try again.";
+          return;
+        }
+        if (code === "no-speech") {
+          speechErrorRef.current =
+            "I could not hear speech clearly. Please speak a bit louder and try again.";
+          return;
+        }
+        speechErrorRef.current = `Speech recognition failed (${code}). Please try again.`;
+      };
+
+      speechRecognitionRef.current = recognition;
+
+      const mr = new MediaRecorder(stream);
 
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         setStep("transcribing");
+
         try {
-          const partial = await mockTranscribeAndExtract(blob);
+          await stopSpeechRecognition();
+
+          if (speechErrorRef.current) {
+            throw new Error(speechErrorRef.current);
+          }
+
+          const spokenTranscript = transcriptRef.current.trim();
+          if (!spokenTranscript) {
+            throw new Error(
+              "No speech was captured. Please hold the phone closer and try again."
+            );
+          }
+
+          const partial: Partial<MemoryEvent> = {
+            transcript: spokenTranscript,
+            event_type: "general",
+          };
+
           setPendingEvent(partial);
-          setTranscript(partial.transcript ?? "");
+          setTranscript(spokenTranscript);
           setStep("confirm");
         } catch (err) {
           console.error("Transcription error:", err);
-          setErrorMsg("Could not process your recording. Please try again.");
+          setErrorMsg(
+            err instanceof Error
+              ? err.message
+              : "Could not process your recording. Please try again."
+          );
           setStep("error");
         }
       };
 
-      mr.start();
-      mediaRecorderRef.current = mr;
-      setStep("recording");
+      try {
+        recognition.start();
+        mr.start();
+        mediaRecorderRef.current = mr;
+        setStep("recording");
+      } catch (err) {
+        stream.getTracks().forEach((t) => t.stop());
+        await stopSpeechRecognition();
+        throw err;
+      }
     } catch (err) {
       console.error("Mic error:", err);
       const name = err instanceof Error ? (err as DOMException).name : "";
@@ -84,7 +230,7 @@ export default function RecordMemoryPage() {
       }
       setStep("error");
     }
-  }, []);
+  }, [stopSpeechRecognition]);
 
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
@@ -118,6 +264,8 @@ export default function RecordMemoryPage() {
     setPendingEvent(null);
     setWarning(null);
     setErrorMsg("");
+    transcriptRef.current = "";
+    speechErrorRef.current = null;
   }, []);
 
   return (
