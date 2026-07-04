@@ -1,0 +1,11 @@
+# Optional dependencies for the Cognee Memory Engine's cognee-backed backends.
+# Only needed when MEMORY_BACKEND=graph or blob (Slice 7+).
+#
+# The offline default backend (MEMORY_BACKEND=local) needs NOTHING here — it runs
+# on the base requirements.txt alone. Install these only to exercise a cognee backend:
+#     pip install -r apps/api/requirements-memory.txt
+#
+# Pinned in the Slice 7 spike: cognee's real API surface (add/cognify/search +
+# SearchType.CHUNKS/GRAPH_COMPLETION, remember/recall/improve/forget, temporal_cognify
+# as a cognify flag) was verified against a running import of this exact version (guardrail #4).
+cognee==1.2.2
