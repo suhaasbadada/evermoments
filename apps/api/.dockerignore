@@ -1,6 +1,8 @@
+.env
+.venv
 __pycache__
 *.pyc
 *.pyo
-*.pyd
-.venv
-*.db
+.pytest_cache
+.local-memory-store.json
+requirements-dev.txt

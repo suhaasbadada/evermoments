@@ -8,18 +8,17 @@ services:
       - ./apps/api/.env
     ports:
       - "8000:8000"
-    volumes:
-      - ./apps/api/app:/app/app
+    restart: unless-stopped
 
   web:
     build:
       context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NODE_ENV: production
     ports:
       - "3000:3000"
-    volumes:
-      - ./apps/web:/app
-      - /app/node_modules
     depends_on:
       - api
+    restart: unless-stopped
