@@ -69,7 +69,14 @@ def _fact_for(event: MemoryEvent) -> str:
         return f"took {m.name} ({m.form})" if m.form else f"took {m.name}"
     if et == "person_mention" and e.people:
         p = e.people[0]
-        return f"{p.name} — {p.relationship}" if p.relationship else p.name
+        person_summary = f"{p.name} — {p.relationship}" if p.relationship else p.name
+        if event.transcript:
+            transcript = event.transcript.strip()
+            # Keep richer spoken context (e.g., "Mom visited me today at 4pm")
+            # instead of collapsing to only the person name.
+            if _norm_text(transcript) and len(_norm_text(transcript)) > len(_norm_text(person_summary)):
+                return transcript
+        return person_summary
     if et == "appointment" and e.appointments:
         a = e.appointments[0]
         parts = [a.title]
