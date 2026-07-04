@@ -8,8 +8,9 @@ import type { MemoryAnswer, MemoryResult } from "@/lib/memoryClient";
 import { SafetyBanner } from "@/components/SafetyBanner";
 import { VerificationBadge } from "@/components/VerificationBadge";
 import { MobileNav } from "@/components/mobile-nav";
+import { usePatient } from "@/components/patient-context";
 
-const PATIENT_ID = "p_001";
+
 
 const EXAMPLE_QUERIES = [
   "Where did I keep my wallet?",
@@ -55,6 +56,7 @@ function SourceLine({ result }: { result: MemoryResult }) {
 
 export default function AskMemoryPage() {
   const router = useRouter();
+  const { patientId } = usePatient();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [answer, setAnswer] = useState<MemoryAnswer | null>(null);
@@ -68,7 +70,7 @@ export default function AskMemoryPage() {
     setAnswer(null);
     setError("");
     try {
-      const result = await queryMemory(PATIENT_ID, trimmed);
+      const result = await queryMemory(patientId, trimmed);
       setAnswer(result);
     } catch (err) {
       setError(

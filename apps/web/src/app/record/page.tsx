@@ -8,6 +8,7 @@ import { ingestMemoryEvent } from "@/lib/memoryClient";
 import type { MemoryEvent, MemoryWarning } from "@/lib/memoryClient";
 import { SafetyBanner } from "@/components/SafetyBanner";
 import { MobileNav } from "@/components/mobile-nav";
+import { usePatient } from "@/components/patient-context";
 
 type Step =
   | "idle"
@@ -20,7 +21,7 @@ type Step =
 
 type InputMode = "voice" | "text" | "upload";
 
-const PATIENT_ID = "p_001";
+
 
 type SpeechRecognitionAlternativeLike = {
   transcript: string;
@@ -88,6 +89,7 @@ async function extractMemoryFromTranscript(
 
 export default function RecordMemoryPage() {
   const router = useRouter();
+  const { patientId } = usePatient();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const transcriptRef = useRef("");
@@ -339,7 +341,7 @@ export default function RecordMemoryPage() {
           ? "manual"
           : "voice_note";
       const event: MemoryEvent = {
-        patient_id: PATIENT_ID,
+        patient_id: patientId,
         source,
         recorded_at: new Date().toISOString(),
         event_type: pendingEvent.event_type ?? "general",

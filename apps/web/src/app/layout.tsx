@@ -19,6 +19,9 @@ export const metadata: Metadata = {
   description: "Your memory companion",
 };
 
+import { PatientProvider } from "@/components/patient-context";
+import { PatientSwitcher } from "@/components/patient-switcher";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,7 +39,10 @@ export default function RootLayout({
         <div className="fixed right-3 top-3 z-50">
           <HealthIndicator />
         </div>
-        {children}
+        <PatientProvider>
+          {children}
+          <PatientSwitcher />
+        </PatientProvider>
       </body>
     </html>
   );

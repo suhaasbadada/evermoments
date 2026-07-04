@@ -23,20 +23,20 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const realMemoryClient: MemoryClient = {
-  // POST /memory/list -> { results: MemoryResult[] }
+  // POST /api/memory/list -> { results: MemoryResult[] }
   async listMemories(params: MemoryListParams): Promise<MemoryResult[]> {
-    const data = await postJson<{ results: MemoryResult[] }>("/memory/list", params);
+    const data = await postJson<{ results: MemoryResult[] }>("/api/memory/list", params);
     return data.results ?? [];
   },
 
-  // POST /memory/verify -> { updated: boolean }
+  // POST /api/memory/verify -> { updated: boolean }
   async verifyMemory(
     patientId: string,
     eventId: string,
     status: VerificationStatus,
     by: string,
   ): Promise<{ ok: boolean }> {
-    const data = await postJson<{ updated: boolean }>("/memory/verify", {
+    const data = await postJson<{ updated: boolean }>("/api/memory/verify", {
       patient_id: patientId,
       event_id: eventId,
       status,
@@ -46,12 +46,12 @@ export const realMemoryClient: MemoryClient = {
   },
 
   consolidateMemories(patientId: string): Promise<ConsolidateResult> {
-    return postJson("/memory/consolidate", { patient_id: patientId });
+    return postJson("/api/memory/consolidate", { patient_id: patientId });
   },
 
-  // POST /memory/forget -> { forgot: boolean }
+  // POST /api/memory/forget -> { forgot: boolean }
   async deleteMemory(patientId: string, eventId?: string): Promise<{ ok: boolean }> {
-    const data = await postJson<{ forgot: boolean }>("/memory/forget", {
+    const data = await postJson<{ forgot: boolean }>("/api/memory/forget", {
       patient_id: patientId,
       event_id: eventId,
     });

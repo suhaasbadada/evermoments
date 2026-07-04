@@ -8,7 +8,7 @@ import type { MemoryResult } from "@/lib/memoryClient";
 import { VerificationBadge } from "@/components/VerificationBadge";
 import { MobileNav } from "@/components/mobile-nav";
 
-const PATIENT_ID = "p_001";
+
 
 function formatDate(iso: string): string {
   try {
@@ -23,8 +23,11 @@ function formatDate(iso: string): string {
   }
 }
 
+import { usePatient } from "@/components/patient-context";
+
 export default function MemoriesPage() {
   const router = useRouter();
+  const { patientId } = usePatient();
   const [memories, setMemories] = useState<MemoryResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,15 +37,15 @@ export default function MemoriesPage() {
     setError("");
 
     try {
-      const first = await listMemories(PATIENT_ID, undefined, "recorded_at_desc", 20);
+      const first = await listMemories(patientId, undefined, "recorded_at_desc", 20);
       if (first.results.length > 0) {
         setMemories(first.results);
         return;
       }
 
       // Demo-friendly behavior: seed baseline memories when the store is empty.
-      await seedPatient(PATIENT_ID);
-      const second = await listMemories(PATIENT_ID, undefined, "recorded_at_desc", 20);
+      await seedPatient(patientId);
+      const second = await listMemories(patientId, undefined, "recorded_at_desc", 20);
       setMemories(second.results);
     } catch (err) {
       setError(

@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
+import { LoaderCircle, RefreshCw, ShieldAlert, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { memoryClient } from "@/lib/memory/client";
@@ -10,6 +10,7 @@ import type { MemoryResult, VerificationStatus } from "@/types/memory";
 import { ConsolidatePanel } from "./consolidate-panel";
 import { InsightsPanel } from "./insights-panel";
 import { MemoryCard } from "./memory-card";
+import { RecordObservationModal } from "./record-observation-modal";
 import { TabBar, type CaregiverTab } from "./tab-bar";
 import { TimelineView } from "./timeline-view";
 
@@ -23,6 +24,7 @@ export function CaregiverDashboard() {
   const [caregiverName, setCaregiverName] = useState("Ravi");
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
+  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
 
   function fetchMemories(opts?: { silent?: boolean }) {
     const silent = opts?.silent ?? false;
@@ -147,6 +149,13 @@ export function CaregiverDashboard() {
         </div>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => setIsRecordModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add Observation
+          </button>
+          <button
             onClick={() => fetchMemories()}
             disabled={refreshing}
             className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
@@ -208,6 +217,15 @@ export function CaregiverDashboard() {
           </div>
         </>
       )}
+
+      <RecordObservationModal
+        isOpen={isRecordModalOpen}
+        onClose={() => setIsRecordModalOpen(false)}
+        onSuccess={() => {
+          setIsRecordModalOpen(false);
+          fetchMemories();
+        }}
+      />
     </div>
   );
 }

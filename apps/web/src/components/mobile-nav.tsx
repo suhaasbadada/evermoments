@@ -7,7 +7,7 @@ import { BookOpen, Brain, Home, Mic, Search } from "lucide-react";
 type NavItem = {
   href: string;
   label: string;
-  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" | "false" }>;
 };
 
 const NAV_ITEMS: NavItem[] = [
