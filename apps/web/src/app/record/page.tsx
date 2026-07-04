@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Mic, Square, Check, ArrowLeft, Loader2 } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
 import { ingestMemoryEvent } from "@/lib/memoryClient";
 import type { MemoryEvent, MemoryWarning } from "@/lib/memoryClient";
 import { SafetyBanner } from "@/components/SafetyBanner";
@@ -54,6 +55,33 @@ type WindowWithSpeechRecognition = Window & {
   SpeechRecognition?: SpeechRecognitionConstructor;
   webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
+
+async function extractMemoryFromTranscript(
+  transcript: string
+): Promise<Partial<MemoryEvent>> {
+  const response = await fetch(`${API_BASE_URL}/api/stt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transcript }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`STT extract failed with status ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    transcript?: string;
+    event_type?: MemoryEvent["event_type"];
+    entities?: MemoryEvent["entities"];
+  };
+
+  return {
+    transcript: data.transcript ?? transcript,
+    event_type: data.event_type ?? "general",
+    entities: data.entities,
+  };
+}
 
 export default function RecordMemoryPage() {
   const router = useRouter();
@@ -184,13 +212,19 @@ export default function RecordMemoryPage() {
             );
           }
 
-          const partial: Partial<MemoryEvent> = {
-            transcript: spokenTranscript,
-            event_type: "general",
-          };
+          let partial: Partial<MemoryEvent>;
+          try {
+            partial = await extractMemoryFromTranscript(spokenTranscript);
+          } catch {
+            // Keep the patient flow unblocked if API extraction is temporarily unavailable.
+            partial = {
+              transcript: spokenTranscript,
+              event_type: "general",
+            };
+          }
 
           setPendingEvent(partial);
-          setTranscript(spokenTranscript);
+          setTranscript(partial.transcript ?? spokenTranscript);
           setStep("confirm");
         } catch (err) {
           console.error("Transcription error:", err);
@@ -242,6 +276,7 @@ export default function RecordMemoryPage() {
     try {
       const event: MemoryEvent = {
         patient_id: PATIENT_ID,
+        source: "voice_note",
         recorded_at: new Date().toISOString(),
         event_type: pendingEvent.event_type ?? "general",
         transcript: pendingEvent.transcript ?? null,
@@ -251,9 +286,17 @@ export default function RecordMemoryPage() {
       setWarning(result.warning ?? null);
       setStep("done");
     } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : "Could not save. Please try again."
-      );
+      const detail = err instanceof Error ? err.message : String(err);
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+      if (detail.toLowerCase().includes("unreachable")) {
+        setErrorMsg(
+          `Could not reach the Memory API from ${origin}.\n\n` +
+            "If you opened the app on 127.0.0.1 or a LAN IP, add that origin to API CORS settings (CORS_ORIGINS) and try again."
+        );
+      } else {
+        setErrorMsg(detail || "Could not save. Please try again.");
+      }
       setStep("error");
     }
   }, [pendingEvent]);

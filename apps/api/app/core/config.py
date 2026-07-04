@@ -28,7 +28,23 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
         if self.APP_ENV.lower() == "production":
             return []
-        return [self.FRONTEND_ORIGIN]
+
+        # Local dev convenience: allow common loopback origins without forcing
+        # users to keep FRONTEND_ORIGIN and browser URL perfectly aligned.
+        defaults = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            self.FRONTEND_ORIGIN,
+        ]
+
+        seen: set[str] = set()
+        origins: list[str] = []
+        for origin in defaults:
+            value = origin.strip()
+            if value and value not in seen:
+                seen.add(value)
+                origins.append(value)
+        return origins
 
 
 settings = Settings()

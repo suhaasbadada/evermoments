@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
-import { listMemories } from "@/lib/memoryClient";
+import { listMemories, seedPatient } from "@/lib/memoryClient";
 import type { MemoryResult } from "@/lib/memoryClient";
 import { VerificationBadge } from "@/components/VerificationBadge";
 
@@ -28,16 +28,51 @@ export default function MemoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    listMemories(PATIENT_ID, undefined, "recorded_at_desc", 20)
-      .then((r) => setMemories(r.results))
-      .catch((err) =>
-        setError(
-          err instanceof Error ? err.message : "Could not load memories."
-        )
-      )
-      .finally(() => setLoading(false));
+  const loadMemories = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
+    setError("");
+
+    try {
+      const first = await listMemories(PATIENT_ID, undefined, "recorded_at_desc", 20);
+      if (first.results.length > 0) {
+        setMemories(first.results);
+        return;
+      }
+
+      // Demo-friendly behavior: seed baseline memories when the store is empty.
+      await seedPatient(PATIENT_ID);
+      const second = await listMemories(PATIENT_ID, undefined, "recorded_at_desc", 20);
+      setMemories(second.results);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not load memories."
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadMemories(true);
+
+    const handlePageShow = () => {
+      void loadMemories(false);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void loadMemories(false);
+      }
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [loadMemories]);
 
   return (
     <main className="min-h-screen bg-amber-50 flex flex-col px-6 py-10 gap-6 max-w-xl mx-auto">

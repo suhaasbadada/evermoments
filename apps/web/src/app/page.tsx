@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { Mic, Search, Calendar, Brain, Moon, Sun } from "lucide-react";
-import { checkMemoryHealth, seedPatient } from "@/lib/memoryClient";
+import { checkMemoryHealth, listMemories, seedPatient } from "@/lib/memoryClient";
 
 const SUNDOWN_HOUR = 18; // 6 pm local time
 
@@ -17,7 +17,12 @@ export default function PatientHome() {
 
     // Seed demo data on first load if memory API is reachable
     checkMemoryHealth()
-      .then(() => seedPatient("p_001"))
+      .then(async () => {
+        const existing = await listMemories("p_001", undefined, "recorded_at_desc", 1);
+        if (existing.results.length === 0) {
+          await seedPatient("p_001");
+        }
+      })
       .catch(() => {
         // Silently skip — seed failure should not block the UI
       });
