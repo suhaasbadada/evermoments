@@ -1,0 +1,36 @@
+services:
+  # Python FastAPI Backend
+  - type: web
+    name: evermoments-api
+    env: docker
+    rootDir: apps/api
+    plan: free
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: FRONTEND_ORIGIN
+        value: "https://evermoments-web.onrender.com"
+      - key: CORS_ORIGINS
+        value: "https://evermoments-web.onrender.com"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: COGNEE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: COGNEE_MODE
+        value: cloud
+      - key: COGNEE_CLOUD_URL
+        value: "https://tenant-6e441a01-7548-45fc-b889-064ebb001740.aws.cognee.ai"
+
+  # Next.js Frontend
+  - type: web
+    name: evermoments-web
+    env: node
+    rootDir: apps/web
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: "https://evermoments-api.onrender.com"
