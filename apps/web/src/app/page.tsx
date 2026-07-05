@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { Mic, Search, Calendar, Brain } from "lucide-react";
+import { Mic, Search, Calendar } from "lucide-react";
 import { checkMemoryHealth, listMemories, seedPatient } from "@/lib/memoryClient";
 import { MobileNav } from "@/components/mobile-nav";
 
@@ -65,16 +65,6 @@ export default function PatientHome() {
             <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
           </span>
           Today&apos;s Memories
-        </Link>
-
-        <Link
-          href="/practice"
-          className="app-button app-card flex items-center gap-3 px-4 py-3.5 text-sm font-semibold text-emerald-950 hover:bg-white/95"
-        >
-          <span className="rounded-xl bg-indigo-600 p-2 text-white shadow-sm">
-            <Brain className="h-4 w-4 shrink-0" aria-hidden="true" />
-          </span>
-          Gentle Recall
         </Link>
       </div>
       </div>

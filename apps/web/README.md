@@ -30,7 +30,6 @@ cp .env.example .env.local
 | `/record` | Record a Memory — mic → mock STT → confirm → save | ✅ done |
 | `/ask` | Ask My Memory — example chips + text input → answer card | ✅ done |
 | `/memories` | Today's Memories — lists all stored memories with badges | ✅ done |
-| `/practice` | Gentle Recall — placeholder | placeholder |
 
 ### Sundowning / Safe Mode
 Built into the home screen. Auto-activates after 6 pm local time. Also has a manual **Demo: Evening Mode** toggle for judging. Safe mode shows:
