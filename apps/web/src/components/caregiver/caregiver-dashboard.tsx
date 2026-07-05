@@ -4,7 +4,7 @@ import { LoaderCircle, RefreshCw, ShieldAlert, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { memoryClient } from "@/lib/memory/client";
-import { DEFAULT_PATIENT_ID } from "@/lib/memory/constants";
+import { usePatient } from "@/components/patient-context";
 import type { MemoryResult, VerificationStatus } from "@/types/memory";
 
 import { ConsolidatePanel } from "./consolidate-panel";
@@ -17,6 +17,7 @@ import { TimelineView } from "./timeline-view";
 const ATTENTION_STATUSES: VerificationStatus[] = ["unverified", "needs_check", "safety_critical"];
 
 export function CaregiverDashboard() {
+  const { patientId } = usePatient();
   const [memories, setMemories] = useState<MemoryResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export function CaregiverDashboard() {
     const silent = opts?.silent ?? false;
     if (!silent) setRefreshing(true);
     return memoryClient
-      .listMemories({ patient_id: DEFAULT_PATIENT_ID, sort: "recorded_at_desc" })
+      .listMemories({ patient_id: patientId, sort: "recorded_at_desc" })
       .then((results) => {
         setMemories(results);
         setLoading(false);
@@ -49,7 +50,7 @@ export function CaregiverDashboard() {
     let cancelled = false;
 
     memoryClient
-      .listMemories({ patient_id: DEFAULT_PATIENT_ID, sort: "recorded_at_desc" })
+      .listMemories({ patient_id: patientId, sort: "recorded_at_desc" })
       .then((results) => {
         if (!cancelled) {
           setMemories(results);
@@ -72,7 +73,7 @@ export function CaregiverDashboard() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [patientId]);
 
   const attentionList = useMemo(
     () => memories.filter((m) => ATTENTION_STATUSES.includes(m.verification_status)),
@@ -99,7 +100,7 @@ export function CaregiverDashboard() {
     setPendingIds((prev) => new Set(prev).add(eventId));
     try {
       await memoryClient.verifyMemory(
-        DEFAULT_PATIENT_ID,
+        patientId,
         eventId,
         status,
         caregiverName.trim() || "Caregiver",
@@ -127,7 +128,7 @@ export function CaregiverDashboard() {
 
     setPendingIds((prev) => new Set(prev).add(eventId));
     try {
-      await memoryClient.deleteMemory(DEFAULT_PATIENT_ID, eventId);
+      await memoryClient.deleteMemory(patientId, eventId);
       setMemories((prev) => prev.filter((m) => m.note_id !== eventId));
     } catch {
       setError("Could not delete the memory. Try again.");
@@ -175,7 +176,7 @@ export function CaregiverDashboard() {
         </div>
       </div>
 
-      <ConsolidatePanel patientId={DEFAULT_PATIENT_ID} />
+      <ConsolidatePanel patientId={patientId} />
 
       {!loading && <InsightsPanel memories={memories} />}
 
