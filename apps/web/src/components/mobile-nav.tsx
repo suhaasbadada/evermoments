@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Brain, Home, Mic, Search } from "lucide-react";
+import { BookOpen, Home, Mic, Search } from "lucide-react";
 
 type NavItem = {
   href: string;
@@ -15,7 +15,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/record", label: "Record", icon: Mic },
   { href: "/ask", label: "Ask", icon: Search },
   { href: "/memories", label: "Memories", icon: BookOpen },
-  { href: "/practice", label: "Practice", icon: Brain },
 ];
 
 export function MobileNav() {
